@@ -1,0 +1,17 @@
+{
+  "name": "miniworld-crank",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "crank": "tsx pulse-crank.ts"
+  },
+  "dependencies": {
+    "@mysten/sui": "1.45.2",
+    "@mysten/walrus": "^0.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0",
+    "typescript": "^5.9.2"
+  }
+}

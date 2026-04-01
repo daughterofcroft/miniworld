@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+.env
+.env.*
+move/miniworld/build/
+move/counter/build/
+*.log
+.DS_Store
+crank/node_modules/
+crank/.env
