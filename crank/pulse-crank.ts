@@ -4,20 +4,27 @@ import { Transaction } from "@mysten/sui/transactions";
 
 // ── Configuration ──
 
-const PACKAGE_ID = process.env.MINIWORLD_PACKAGE_ID!;
-const WORLD_ID = process.env.MINIWORLD_WORLD_ID!;
-const PULSE_CAP_ID = process.env.MINIWORLD_PULSE_CAP_ID!;
+const PACKAGE_ID = process.env.MINIWORLD_PACKAGE_ID;
+const WORLD_ID = process.env.MINIWORLD_WORLD_ID;
+const PULSE_CAP_ID = process.env.MINIWORLD_PULSE_CAP_ID;
+const CRANK_SECRET = process.env.CRANK_SECRET_KEY;
+
+if (!PACKAGE_ID || !WORLD_ID || !PULSE_CAP_ID || !CRANK_SECRET) {
+  console.error("Missing required env vars. Copy .env.example to .env and fill in values:");
+  console.error("  MINIWORLD_PACKAGE_ID, MINIWORLD_WORLD_ID, MINIWORLD_PULSE_CAP_ID, CRANK_SECRET_KEY");
+  process.exit(1);
+}
 const WALRUS_PUBLISHER_URL =
   process.env.WALRUS_PUBLISHER_URL ||
   "https://publisher.walrus-testnet.walrus.space";
 const WALRUS_AGGREGATOR_URL =
   process.env.WALRUS_AGGREGATOR_URL ||
   "https://aggregator.walrus-testnet.walrus.space";
-const PULSE_INTERVAL_MS = Number(process.env.PULSE_INTERVAL_MS || 60_000);
-const SNAPSHOT_EVERY_N = Number(process.env.SNAPSHOT_EVERY_N || 10);
+const PULSE_INTERVAL_MS = Math.max(5_000, Number(process.env.PULSE_INTERVAL_MS || 60_000) || 60_000);
+const SNAPSHOT_EVERY_N = Math.max(1, Number(process.env.SNAPSHOT_EVERY_N || 10) || 10);
 
 const keypair = Ed25519Keypair.fromSecretKey(
-  Buffer.from(process.env.CRANK_SECRET_KEY!, "base64"),
+  Buffer.from(CRANK_SECRET, "base64"),
 );
 const client = new SuiClient({ url: getFullnodeUrl("testnet") });
 
@@ -34,7 +41,7 @@ interface SnapshotManifestEntry {
 }
 
 let manifest: SnapshotManifestEntry[] = [];
-let manifestBlobId: string | null = null;
+let manifestBlobId: string | null = process.env.WALRUS_MANIFEST_BLOB_ID || null;
 
 // ── Walrus helpers ──
 
@@ -198,17 +205,16 @@ async function tick() {
 
   pulsing = true;
   try {
-    // Idempotency check: read current epoch, skip if already pulsed
+    // Idempotency check: read current epoch, skip if we already pulsed it
     const state = await readWorldState();
-    if (lastPulsedEpoch !== null && state.epoch === lastPulsedEpoch + 1) {
-      // We already pulsed this epoch (epoch advanced from our last pulse)
-      // but crank interval fired again before the next epoch
-      // This shouldn't happen with proper interval, but guard against it
+    if (lastPulsedEpoch !== null && state.epoch <= lastPulsedEpoch) {
+      console.log(`Skipping: epoch ${state.epoch} already pulsed (last: ${lastPulsedEpoch})`);
+      return;
     }
 
     const digest = await executePulse();
     pulseCount++;
-    lastPulsedEpoch = state.epoch; // epoch before pulse; after pulse it'll be +1
+    lastPulsedEpoch = state.epoch + 1; // track the post-pulse epoch
 
     console.log(
       `Pulse #${pulseCount} executed: ${digest} (epoch ${state.epoch} -> ${state.epoch + 1})`,

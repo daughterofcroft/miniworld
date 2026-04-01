@@ -72,8 +72,10 @@ export function TilePlacer({
         onError: (err) => {
           setPlacing(false);
           const msg = err.message || "Transaction failed";
-          if (msg.includes("1")) {
+          if (msg.includes("MoveAbort") && msg.includes(", 1)")) {
             setError("Rate limited: wait for the next pulse");
+          } else if (msg.includes("MoveAbort") && msg.includes(", 0)")) {
+            setError("Invalid coordinates");
           } else {
             setError(msg);
           }
