@@ -153,10 +153,12 @@ sui move test
 
 ## Roadmap
 
-- **Stage 1** (complete): Living Grid, 32x32 GoL, Walrus snapshots
-- **Stage 2**: Discovery layer, fog of war, tile packs on Walrus
-- **Stage 3**: Snapshots/replays pipeline, agent interface, world types
-- **Stage 4**: Walrus Sites explorer, starter kit packaging, third-party onboarding
+| Stage | Milestone | Status |
+|-------|-----------|--------|
+| 1 | Living Grid — 32x32 GoL, Walrus snapshots, React frontend | ✅ Complete |
+| 2 | Discovery Layer — fog of war, tile packs on Walrus | 🔲 Up next |
+| 3 | Snapshots, Replays, Agents — full pipeline, agent interface, world types | 🔲 Planned |
+| 4 | Explorer + Adoption — Walrus Sites explorer, starter kit, third-party onboarding | 🔲 Planned |
 
 ## License
 
