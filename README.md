@@ -162,4 +162,6 @@ sui move test
 
 ## License
 
-MIT
+[Business Source License 1.1](LICENSE)
+
+You can use Miniworld to build and operate worlds, games, and simulations. You cannot use it to create a competing world-building protocol. Converts to Apache 2.0 on 2030-04-02. The starter kit (when shipped in Stage 4) will be Apache 2.0 from day one.
