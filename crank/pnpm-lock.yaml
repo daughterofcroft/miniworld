@@ -14,6 +14,9 @@ importers:
       '@mysten/walrus':
         specifier: ^0.1.0
         version: 0.1.8(typescript@5.9.3)
+      dotenv:
+        specifier: ^17.4.0
+        version: 17.4.0
     devDependencies:
       tsx:
         specifier: ^4.0.0
@@ -277,6 +280,10 @@ packages:
 
   dataloader@2.2.3:
     resolution: {integrity: sha512-y2krtASINtPFS1rSDjacrFgn1dcUuoREVabwlOGOe4SdxenREqwjwjElAdwvbGM7kgZz9a3KVicWR7vcz8rnzA==}
+
+  dotenv@17.4.0:
+    resolution: {integrity: sha512-kCKF62fwtzwYm0IGBNjRUjtJgMfGapII+FslMHIjMR5KTnwEmBmWLDRSnc3XSNP8bNy34tekgQyDT0hr7pERRQ==}
+    engines: {node: '>=12'}
 
   esbuild@0.27.5:
     resolution: {integrity: sha512-zdQoHBjuDqKsvV5OPaWansOwfSQ0Js+Uj9J85TBvj3bFW1JjWTSULMRwdQAc8qMeIScbClxeMK0jlrtB9linhA==}
@@ -543,6 +550,8 @@ snapshots:
       '@scure/base': 1.2.6
 
   dataloader@2.2.3: {}
+
+  dotenv@17.4.0: {}
 
   esbuild@0.27.5:
     optionalDependencies:

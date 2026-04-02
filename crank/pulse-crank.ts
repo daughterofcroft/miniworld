@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { SuiClient, getFullnodeUrl } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
@@ -23,8 +24,10 @@ const WALRUS_AGGREGATOR_URL =
 const PULSE_INTERVAL_MS = Math.max(5_000, Number(process.env.PULSE_INTERVAL_MS || 60_000) || 60_000);
 const SNAPSHOT_EVERY_N = Math.max(1, Number(process.env.SNAPSHOT_EVERY_N || 10) || 10);
 
+// Sui keystore format: 1-byte scheme flag + 32-byte secret key
+const keyBytes = Buffer.from(CRANK_SECRET, "base64");
 const keypair = Ed25519Keypair.fromSecretKey(
-  Buffer.from(CRANK_SECRET, "base64"),
+  keyBytes.length === 33 ? keyBytes.subarray(1) : keyBytes,
 );
 const client = new SuiClient({ url: getFullnodeUrl("testnet") });
 
