@@ -4,7 +4,8 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "crank": "tsx pulse-crank.ts"
+    "crank": "tsx pulse-crank.ts",
+    "seed": "tsx seed-world.ts"
   },
   "dependencies": {
     "@mysten/sui": "1.45.2",
@@ -12,6 +13,7 @@
     "dotenv": "^17.4.0"
   },
   "devDependencies": {
+    "@types/node": "^25.5.0",
     "tsx": "^4.0.0",
     "typescript": "^5.9.2"
   }

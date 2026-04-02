@@ -113,6 +113,26 @@ pnpm crank
 
 The crank calls `pulse()` every 60 seconds, applying Game of Life rules to evolve the grid. Every 10th pulse, a snapshot is written to Walrus.
 
+### 5. Seed the world with life (optional)
+
+Place classic Game of Life patterns to see emergent behavior:
+
+```bash
+cd crank
+pnpm seed              # All patterns: glider, block, blinker, r-pentomino, beacon, LWSS
+pnpm seed glider block # Just specific patterns
+```
+
+Available patterns:
+- **glider** (5 cells) — travels diagonally across the grid
+- **block** (4 cells) — 2x2 still life, survives forever
+- **blinker** (3 cells) — oscillator, toggles every pulse
+- **rpentomino** (5 cells) — explodes into chaos, creates sustained activity
+- **beacon** (6 cells) — period-2 oscillator
+- **lwss** (9 cells) — lightweight spaceship, travels horizontally
+
+The seed script places one tile per epoch (rate limit), pulsing between each placement. All 32 cells take about 2 minutes. Then start the crank and watch the world evolve.
+
 ## How it works
 
 1. **Place tiles:** Connect your Sui wallet and click cells on the grid. Each placement is an on-chain transaction.
