@@ -5,7 +5,6 @@ build/
 .env.local
 .env.*.local
 move/miniworld/build/
-move/counter/build/
 *.log
 .DS_Store
 crank/node_modules/
