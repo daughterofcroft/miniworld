@@ -1,5 +1,4 @@
 import { ConnectButton } from "@mysten/dapp-kit";
-import { Box, Container, Flex, Heading, Text } from "@radix-ui/themes";
 import { useState, useEffect, useCallback } from "react";
 import { useNetworkVariable } from "./networkConfig";
 import { useWorldState } from "./hooks/useWorldState";
@@ -27,13 +26,11 @@ function App() {
     (TileData | null)[] | null
   >(null);
 
-  // Auto-refresh world state every 10 seconds
   useEffect(() => {
     const interval = setInterval(() => refetch(), 10_000);
     return () => clearInterval(interval);
   }, [refetch]);
 
-  // Load historical snapshot when timeline epoch changes
   useEffect(() => {
     if (timelineEpoch === null) {
       setHistoricalGrid(null);
@@ -52,7 +49,6 @@ function App() {
 
   const handlePlaced = useCallback(() => {
     setSelectedCell(null);
-    // Refetch after a short delay to let the tx settle
     setTimeout(() => refetch(), 2000);
   }, [refetch]);
 
@@ -66,49 +62,90 @@ function App() {
   return (
     <>
       {/* Header */}
-      <Flex
-        position="sticky"
-        px="4"
-        py="2"
-        justify="between"
-        align="center"
-        style={{ borderBottom: "1px solid var(--gray-a2)", zIndex: 10 }}
+      <header
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: "12px 24px",
+          borderBottom: "1px solid var(--mw-border)",
+          position: "sticky",
+          top: 0,
+          background: "rgba(10, 14, 20, 0.9)",
+          backdropFilter: "blur(12px)",
+          zIndex: 100,
+        }}
       >
-        <Flex align="center" gap="3">
-          <Heading size="4">Miniworld</Heading>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <span
+            style={{
+              fontFamily: "var(--mw-font-logo)",
+              fontSize: 24,
+              color: "var(--mw-text)",
+            }}
+          >
+            Miniworld
+          </span>
           {worldState && (
-            <Text size="2" color="gray">
+            <span
+              style={{
+                fontFamily: "var(--mw-font-mono)",
+                fontSize: 12,
+                color: "var(--mw-accent)",
+                background: "var(--mw-accent-dim)",
+                padding: "3px 12px",
+                borderRadius: "var(--mw-r-full)",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  background: "var(--mw-life)",
+                  borderRadius: "50%",
+                  display: "inline-block",
+                  animation: "heartbeat 2s ease-in-out infinite",
+                }}
+              />
               Epoch {worldState.epoch}
-            </Text>
+            </span>
           )}
-        </Flex>
+        </div>
         <ConnectButton />
-      </Flex>
+      </header>
 
-      {/* Main content */}
-      <Container size="2" px="4" py="4">
+      {/* Main */}
+      <main
+        style={{
+          maxWidth: 640,
+          margin: "0 auto",
+          padding: "32px 16px 64px",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 24,
+        }}
+      >
         {isLoading ? (
-          <Flex justify="center" py="9">
-            <Text>Loading world...</Text>
-          </Flex>
+          <div style={{ padding: "80px 0", color: "var(--mw-muted)" }}>
+            Loading world...
+          </div>
         ) : !worldState ? (
-          <Flex justify="center" py="9">
-            <Text color="red">
-              Failed to load world. Check that the World ID is correct in
-              constants.ts.
-            </Text>
-          </Flex>
+          <div style={{ padding: "80px 0", color: "var(--mw-error)" }}>
+            Failed to load world. Check that the World ID is correct in
+            constants.ts.
+          </div>
         ) : (
-          <Flex direction="column" gap="4" align="center">
-            {/* Stats bar */}
-            <Flex gap="4" justify="center">
-              <Text size="2">
-                Alive: {worldState.aliveCount} / {worldState.width * worldState.height}
-              </Text>
-              <Text size="2" color="gray">
-                Grid: {worldState.width}x{worldState.height}
-              </Text>
-            </Flex>
+          <>
+            {/* Stats */}
+            <div style={{ display: "flex", gap: 32, justifyContent: "center" }}>
+              <Stat value={worldState.aliveCount} label="Alive" color="var(--mw-accent)" />
+              <Stat value={worldState.width * worldState.height} label="Cells" />
+              <Stat value={worldState.epoch} label="Epoch" />
+            </div>
 
             {/* Grid */}
             <WorldGrid
@@ -122,7 +159,7 @@ function App() {
               disabled={isViewingHistory}
             />
 
-            {/* Tile placer (only in live view with wallet) */}
+            {/* Controls */}
             {!isViewingHistory && (
               <TilePlacer
                 worldId={worldId}
@@ -132,26 +169,82 @@ function App() {
             )}
 
             {isViewingHistory && (
-              <Text size="2" color="amber">
-                Viewing historical snapshot (epoch {timelineEpoch})
-              </Text>
+              <div
+                style={{
+                  fontFamily: "var(--mw-font-mono)",
+                  fontSize: 12,
+                  color: "var(--mw-accent)",
+                }}
+              >
+                Viewing epoch {timelineEpoch}
+              </div>
             )}
 
             {/* Timeline */}
             {!manifestLoading && manifest.length > 0 && (
-              <Box style={{ width: "100%", maxWidth: 520 }} pt="2">
-                <Timeline
-                  manifest={manifest}
-                  currentEpoch={worldState.epoch}
-                  selectedEpoch={timelineEpoch}
-                  onSelectEpoch={setTimelineEpoch}
-                />
-              </Box>
+              <Timeline
+                manifest={manifest}
+                currentEpoch={worldState.epoch}
+                selectedEpoch={timelineEpoch}
+                onSelectEpoch={setTimelineEpoch}
+              />
             )}
-          </Flex>
+
+            {/* Tagline */}
+            <p
+              style={{
+                fontFamily: "var(--mw-font-display)",
+                fontSize: 14,
+                fontWeight: 300,
+                color: "var(--mw-muted)",
+                fontStyle: "italic",
+                opacity: 0.7,
+              }}
+            >
+              Worlds that evolve themselves
+            </p>
+          </>
         )}
-      </Container>
+      </main>
     </>
+  );
+}
+
+function Stat({
+  value,
+  label,
+  color,
+}: {
+  value: number;
+  label: string;
+  color?: string;
+}) {
+  return (
+    <div style={{ textAlign: "center" }}>
+      <div
+        style={{
+          fontFamily: "var(--mw-font-mono)",
+          fontSize: 20,
+          fontVariantNumeric: "tabular-nums",
+          color: color ?? "var(--mw-text)",
+          lineHeight: 1.2,
+        }}
+      >
+        {value}
+      </div>
+      <div
+        style={{
+          fontSize: 11,
+          fontWeight: 500,
+          color: "var(--mw-muted)",
+          textTransform: "uppercase" as const,
+          letterSpacing: "0.08em",
+          marginTop: 2,
+        }}
+      >
+        {label}
+      </div>
+    </div>
   );
 }
 

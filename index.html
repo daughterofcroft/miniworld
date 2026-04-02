@@ -5,50 +5,66 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Miniworld</title>
-
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Pacifico&family=Fraunces:opsz,wght@9..144,300;9..144,400;9..144,500&family=Instrument+Sans:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet" />
     <style>
-      /*
-  Josh's Custom CSS Reset
-  https://www.joshwcomeau.com/css/custom-css-reset/
-*/
-      *,
-      *::before,
-      *::after {
-        box-sizing: border-box;
+      :root {
+        --mw-bg: #0a0e14;
+        --mw-surface: #131922;
+        --mw-surface-hover: #1a2332;
+        --mw-border: #1e2a3a;
+        --mw-text: #d4dae3;
+        --mw-muted: #5c6773;
+        --mw-accent: #e6b450;
+        --mw-accent-dim: rgba(230, 180, 80, 0.12);
+        --mw-life: #4ade80;
+        --mw-life-dim: rgba(74, 222, 128, 0.12);
+        --mw-error: #ef4444;
+        --mw-r-sm: 4px;
+        --mw-r-md: 8px;
+        --mw-r-lg: 12px;
+        --mw-r-full: 9999px;
+        --mw-font-logo: 'Pacifico', cursive;
+        --mw-font-display: 'Fraunces', serif;
+        --mw-font-body: 'Instrument Sans', sans-serif;
+        --mw-font-mono: 'Geist Mono', monospace;
       }
-      * {
-        margin: 0;
-      }
+
+      *, *::before, *::after { box-sizing: border-box; }
+      * { margin: 0; }
+
       body {
+        background: var(--mw-bg);
+        color: var(--mw-text);
+        font-family: var(--mw-font-body);
         line-height: 1.5;
         -webkit-font-smoothing: antialiased;
       }
-      img,
-      picture,
-      video,
-      canvas,
-      svg {
-        display: block;
-        max-width: 100%;
+
+      /* Subtle grain */
+      body::before {
+        content: '';
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.025;
+        background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+        z-index: 9999;
       }
-      input,
-      button,
-      textarea,
-      select {
-        font: inherit;
+
+      img, picture, video, canvas, svg { display: block; max-width: 100%; }
+      input, button, textarea, select { font: inherit; }
+      p, h1, h2, h3, h4, h5, h6 { overflow-wrap: break-word; }
+      #root, #__next { isolation: isolate; }
+
+      @keyframes heartbeat {
+        0%, 100% { opacity: 0.4; transform: scale(1); }
+        50% { opacity: 1; transform: scale(1.3); }
       }
-      p,
-      h1,
-      h2,
-      h3,
-      h4,
-      h5,
-      h6 {
-        overflow-wrap: break-word;
-      }
-      #root,
-      #__next {
-        isolation: isolate;
+
+      @media (prefers-reduced-motion: reduce) {
+        * { animation-duration: 0s !important; transition-duration: 0s !important; }
       }
     </style>
   </head>

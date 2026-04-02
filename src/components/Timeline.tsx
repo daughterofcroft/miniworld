@@ -1,4 +1,3 @@
-import { Flex, Text, Slider } from "@radix-ui/themes";
 import type { SnapshotEntry } from "../hooks/useWalrusSnapshots";
 
 interface TimelineProps {
@@ -16,22 +15,20 @@ export function Timeline({
 }: TimelineProps) {
   if (manifest.length === 0) {
     return (
-      <Text size="1" color="gray">
+      <div style={{ fontFamily: "var(--mw-font-mono)", fontSize: 11, color: "var(--mw-muted)" }}>
         No snapshots yet. Timeline available after crank runs.
-      </Text>
+      </div>
     );
   }
 
   const epochs = manifest.map((e) => e.epoch);
   const minEpoch = Math.min(...epochs);
 
-  const handleChange = (value: number[]) => {
-    const epoch = value[0];
-    // If at max, show live
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const epoch = Number(e.target.value);
     if (epoch >= currentEpoch) {
       onSelectEpoch(null);
     } else {
-      // Find closest snapshot epoch
       const closest = epochs.reduce((prev, curr) =>
         Math.abs(curr - epoch) < Math.abs(prev - epoch) ? curr : prev,
       );
@@ -40,37 +37,84 @@ export function Timeline({
   };
 
   return (
-    <Flex direction="column" gap="1" style={{ width: "100%", maxWidth: 520 }}>
-      <Flex justify="between">
-        <Text size="1" color="gray">
+    <div style={{ width: "100%", maxWidth: 544 }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: 6,
+        }}
+      >
+        <span
+          style={{
+            fontFamily: "var(--mw-font-mono)",
+            fontSize: 11,
+            color: "var(--mw-muted)",
+          }}
+        >
           Epoch {minEpoch}
-        </Text>
-        <Text size="1" weight="bold">
-          {selectedEpoch !== null
-            ? `Viewing epoch ${selectedEpoch}`
-            : "Live"}
-        </Text>
-        <Text size="1" color="gray">
+        </span>
+        <span
+          style={{
+            fontFamily: "var(--mw-font-mono)",
+            fontSize: 11,
+            fontWeight: 500,
+            color: selectedEpoch !== null ? "var(--mw-accent)" : "var(--mw-life)",
+            display: "flex",
+            alignItems: "center",
+            gap: 4,
+          }}
+        >
+          {selectedEpoch !== null ? (
+            <>
+              Epoch {selectedEpoch}
+              <span
+                onClick={() => onSelectEpoch(null)}
+                style={{ cursor: "pointer", marginLeft: 8, opacity: 0.7 }}
+              >
+                Back to live
+              </span>
+            </>
+          ) : (
+            <>
+              <span
+                style={{
+                  width: 5,
+                  height: 5,
+                  background: "var(--mw-life)",
+                  borderRadius: "50%",
+                  display: "inline-block",
+                  animation: "heartbeat 2s ease-in-out infinite",
+                }}
+              />
+              Live
+            </>
+          )}
+        </span>
+        <span
+          style={{
+            fontFamily: "var(--mw-font-mono)",
+            fontSize: 11,
+            color: "var(--mw-muted)",
+          }}
+        >
           Epoch {currentEpoch}
-        </Text>
-      </Flex>
-      <Slider
+        </span>
+      </div>
+      <input
+        type="range"
         min={minEpoch}
         max={currentEpoch}
         step={1}
-        value={[selectedEpoch ?? currentEpoch]}
-        onValueChange={handleChange}
+        value={selectedEpoch ?? currentEpoch}
+        onChange={handleChange}
+        style={{
+          width: "100%",
+          accentColor: "var(--mw-life)",
+          height: 4,
+        }}
       />
-      {selectedEpoch !== null && (
-        <Text
-          size="1"
-          color="blue"
-          style={{ cursor: "pointer", textAlign: "center" }}
-          onClick={() => onSelectEpoch(null)}
-        >
-          Back to live
-        </Text>
-      )}
-    </Flex>
+    </div>
   );
 }

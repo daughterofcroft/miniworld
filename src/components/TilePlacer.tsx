@@ -4,10 +4,8 @@ import {
   useSuiClient,
 } from "@mysten/dapp-kit";
 import { Transaction } from "@mysten/sui/transactions";
-import { Button, Flex, Text } from "@radix-ui/themes";
 import { useState } from "react";
 import { useNetworkVariable } from "../networkConfig";
-import ClipLoader from "react-spinners/ClipLoader";
 
 interface TilePlacerProps {
   worldId: string;
@@ -29,17 +27,17 @@ export function TilePlacer({
 
   if (!currentAccount) {
     return (
-      <Text size="2" color="gray">
+      <div style={{ fontFamily: "var(--mw-font-body)", fontSize: 13, color: "var(--mw-muted)" }}>
         Connect wallet to place tiles
-      </Text>
+      </div>
     );
   }
 
   if (!selectedCell) {
     return (
-      <Text size="2" color="gray">
+      <div style={{ fontFamily: "var(--mw-font-body)", fontSize: 13, color: "var(--mw-muted)" }}>
         Click a cell on the grid to select it
-      </Text>
+      </div>
     );
   }
 
@@ -54,7 +52,7 @@ export function TilePlacer({
         tx.object(worldId),
         tx.pure.u8(selectedCell.x),
         tx.pure.u8(selectedCell.y),
-        tx.pure.u8(0), // tile_type 0 = user-placed
+        tx.pure.u8(0),
       ],
     });
 
@@ -85,22 +83,46 @@ export function TilePlacer({
   };
 
   return (
-    <Flex direction="column" gap="2" align="center">
-      <Text size="2">
-        Selected: ({selectedCell.x}, {selectedCell.y})
-      </Text>
-      <Button
+    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+      <span
+        style={{
+          fontFamily: "var(--mw-font-mono)",
+          fontSize: 13,
+          color: "var(--mw-muted)",
+        }}
+      >
+        ({selectedCell.x}, {selectedCell.y})
+      </span>
+      <button
         onClick={handlePlace}
         disabled={placing}
-        size="2"
+        style={{
+          fontFamily: "var(--mw-font-body)",
+          fontSize: 13,
+          fontWeight: 500,
+          color: "var(--mw-accent)",
+          background: "transparent",
+          border: "1px solid rgba(230, 180, 80, 0.3)",
+          padding: "7px 20px",
+          borderRadius: "var(--mw-r-md)",
+          cursor: placing ? "wait" : "pointer",
+          opacity: placing ? 0.6 : 1,
+          transition: "background 0.15s, border-color 0.15s",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = "var(--mw-accent-dim)";
+          e.currentTarget.style.borderColor = "var(--mw-accent)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "transparent";
+          e.currentTarget.style.borderColor = "rgba(230, 180, 80, 0.3)";
+        }}
       >
-        {placing ? <ClipLoader size={16} color="white" /> : "Place Tile"}
-      </Button>
+        {placing ? "Placing..." : "Place Tile"}
+      </button>
       {error && (
-        <Text size="1" color="red">
-          {error}
-        </Text>
+        <span style={{ fontSize: 12, color: "var(--mw-error)" }}>{error}</span>
       )}
-    </Flex>
+    </div>
   );
 }

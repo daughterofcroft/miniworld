@@ -9,7 +9,6 @@ interface WorldGridProps {
   disabled?: boolean;
 }
 
-/** Hash an address string to an HSL hue (0-360) for visual differentiation. */
 function addressToHue(address: string): number {
   let hash = 0;
   for (let i = 0; i < address.length; i++) {
@@ -18,15 +17,19 @@ function addressToHue(address: string): number {
   return Math.abs(hash) % 360;
 }
 
-function cellColor(tile: TileData | null): string {
-  if (!tile) return "var(--gray-3)";
+function cellStyle(tile: TileData | null): React.CSSProperties {
+  if (!tile) return {};
   if (tile.tileType === 1) {
-    // GoL-born tile (system): green tint
-    return "hsl(140, 60%, 40%)";
+    return {
+      background: "var(--mw-life)",
+      boxShadow: "0 0 6px rgba(74, 222, 128, 0.3), inset 0 0 2px rgba(255,255,255,0.1)",
+    };
   }
-  // User-placed tile: color by owner address
   const hue = addressToHue(tile.owner);
-  return `hsl(${hue}, 70%, 50%)`;
+  return {
+    background: `hsl(${hue}, 65%, 55%)`,
+    boxShadow: `0 0 6px hsla(${hue}, 65%, 55%, 0.35), inset 0 0 2px rgba(255,255,255,0.15)`,
+  };
 }
 
 export function WorldGrid({
@@ -37,53 +40,57 @@ export function WorldGrid({
   selectedCell,
   disabled,
 }: WorldGridProps) {
-  const cellSize = width <= 32 ? 16 : 12;
-
   return (
     <div
       style={{
-        display: "grid",
-        gridTemplateColumns: `repeat(${width}, ${cellSize}px)`,
-        gap: "1px",
-        background: "var(--gray-6)",
-        border: "1px solid var(--gray-6)",
-        borderRadius: "4px",
-        padding: "1px",
+        background: "var(--mw-surface)",
+        border: "1px solid var(--mw-border)",
+        borderRadius: "var(--mw-r-lg)",
+        padding: 16,
         width: "fit-content",
         margin: "0 auto",
         opacity: disabled ? 0.6 : 1,
       }}
     >
-      {Array.from({ length: width * height }, (_, idx) => {
-        const x = idx % width;
-        const y = Math.floor(idx / width);
-        const tile = grid[idx] ?? null;
-        const isSelected =
-          selectedCell?.x === x && selectedCell?.y === y;
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: `repeat(${width}, 1fr)`,
+          gap: "1px",
+          width: Math.min(512, width * 16),
+          height: Math.min(512, height * 16),
+        }}
+      >
+        {Array.from({ length: width * height }, (_, idx) => {
+          const x = idx % width;
+          const y = Math.floor(idx / width);
+          const tile = grid[idx] ?? null;
+          const isSelected = selectedCell?.x === x && selectedCell?.y === y;
+          const alive = tile !== null;
 
-        return (
-          <div
-            key={idx}
-            onClick={() => !disabled && onCellClick(x, y)}
-            title={
-              tile
-                ? `(${x},${y}) owner: ${tile.owner.slice(0, 8)}... type: ${tile.tileType}`
-                : `(${x},${y}) empty`
-            }
-            style={{
-              width: cellSize,
-              height: cellSize,
-              background: cellColor(tile),
-              cursor: disabled ? "default" : "pointer",
-              outline: isSelected
-                ? "2px solid white"
-                : undefined,
-              outlineOffset: isSelected ? "-2px" : undefined,
-              transition: "background 0.15s",
-            }}
-          />
-        );
-      })}
+          return (
+            <div
+              key={idx}
+              onClick={() => !disabled && onCellClick(x, y)}
+              title={
+                tile
+                  ? `(${x},${y}) owner: ${String(tile.owner).slice(0, 8)}... type: ${tile.tileType}`
+                  : `(${x},${y}) empty`
+              }
+              style={{
+                borderRadius: 1,
+                background: alive ? undefined : "rgba(255,255,255,0.025)",
+                cursor: disabled ? "default" : "crosshair",
+                outline: isSelected ? "2px solid var(--mw-text)" : undefined,
+                outlineOffset: isSelected ? "-1px" : undefined,
+                zIndex: isSelected ? 1 : undefined,
+                transition: "background 0.15s ease, box-shadow 0.15s ease",
+                ...cellStyle(tile),
+              }}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }
