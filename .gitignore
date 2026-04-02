@@ -9,3 +9,4 @@ move/miniworld/build/
 .DS_Store
 crank/node_modules/
 crank/.env
+.gstack/
