@@ -18,6 +18,9 @@ module miniworld::world {
     /// Dynamic field key for world ownership. Stored on World objects.
     public struct WorldOwner has copy, drop, store {}
 
+    /// Dynamic field key marking a world as having an agent. Value is the Agent's ID.
+    public struct AgentDeployed has copy, drop, store {}
+
     /// A tile on the grid. Alive cells have Some(Tile), dead cells have None.
     public struct Tile has store, drop, copy {
         tile_type: u8,
@@ -190,6 +193,23 @@ module miniworld::world {
     /// Check if a world has an owner.
     public fun has_owner(world: &World): bool {
         df::exists_(&world.id, WorldOwner {})
+    }
+
+    // ── Agent helpers ──
+
+    /// Check if this world has an agent deployed (via AgentDeployed dynamic field).
+    public fun has_agent(world: &World): bool {
+        df::exists_<AgentDeployed>(&world.id, AgentDeployed {})
+    }
+
+    /// Mark this world as having an agent deployed. Stores the agent's ID.
+    public fun set_agent_deployed(world: &mut World, agent_id: ID) {
+        df::add(&mut world.id, AgentDeployed {}, agent_id);
+    }
+
+    /// Get the deployed agent's ID for this world.
+    public fun agent_id(world: &World): ID {
+        *df::borrow<AgentDeployed, ID>(&world.id, AgentDeployed {})
     }
 
     // ── Public accessors ──
