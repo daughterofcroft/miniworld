@@ -83,6 +83,14 @@ module miniworld::agent {
         transfer::transfer(cap, agent_address);
     }
 
+    // ── Public mutators ──
+
+    /// Record an action on the agent. Called by world::agent_defend.
+    public fun record_action(agent: &mut Agent, epoch: u64) {
+        agent.actions_taken = agent.actions_taken + 1;
+        agent.last_action_epoch = epoch;
+    }
+
     // ── Public accessors ──
 
     public fun agent_owner(agent: &Agent): address { agent.owner }
