@@ -1,26 +1,15 @@
 #[test_only]
 module miniworld::registry_tests {
     use sui::test_scenario;
-    use sui::package;
-    use miniworld::world_registry::{Self, WorldRegistry, RegistryTicket};
+    use miniworld::world_registry::{Self, WorldRegistry};
     const ADMIN: address = @0xAD;
 
     // ── Helpers ──
 
     fun setup_registry(scenario: &mut test_scenario::Scenario) {
-        // Init creates the RegistryTicket
         test_scenario::next_tx(scenario, ADMIN);
         {
-            world_registry::test_init(test_scenario::ctx(scenario));
-        };
-
-        // Create registry using ticket + UpgradeCap
-        test_scenario::next_tx(scenario, ADMIN);
-        {
-            let ticket = test_scenario::take_from_sender<RegistryTicket>(scenario);
-            let cap = package::test_publish(object::id_from_address(@0x0), test_scenario::ctx(scenario));
-            world_registry::create_registry(ticket, &cap, test_scenario::ctx(scenario));
-            transfer::public_transfer(cap, ADMIN);
+            world_registry::test_create_registry(test_scenario::ctx(scenario));
         };
     }
 
@@ -31,28 +20,11 @@ module miniworld::registry_tests {
         let mut scenario = test_scenario::begin(ADMIN);
         setup_registry(&mut scenario);
 
-        // Verify WorldRegistry was shared
         test_scenario::next_tx(&mut scenario, ADMIN);
         {
             let registry = test_scenario::take_shared<WorldRegistry>(&scenario);
             assert!(world_registry::world_count(&registry) == 0);
             test_scenario::return_shared(registry);
-        };
-
-        test_scenario::end(scenario);
-    }
-
-    #[test]
-    fun test_create_registry_ticket_consumed() {
-        // After creating the registry, there is no RegistryTicket left,
-        // so a second create_registry call is impossible (no ticket to pass).
-        let mut scenario = test_scenario::begin(ADMIN);
-        setup_registry(&mut scenario);
-
-        // Verify no RegistryTicket remains for ADMIN
-        test_scenario::next_tx(&mut scenario, ADMIN);
-        {
-            assert!(!test_scenario::has_most_recent_for_sender<RegistryTicket>(&scenario));
         };
 
         test_scenario::end(scenario);

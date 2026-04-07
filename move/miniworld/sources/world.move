@@ -220,16 +220,29 @@ module miniworld::world {
     public fun world_width(world: &World): u8 { world.width }
     public fun world_height(world: &World): u8 { world.height }
 
-    // ── Package accessors (for agent_actions) ──
+    // ── Accessors for agent_actions module ──
 
     /// Check if the cell at grid index `idx` is alive.
-    public(package) fun is_cell_alive(world: &World, idx: u64): bool {
+    public fun is_cell_alive(world: &World, idx: u64): bool {
         option::is_some(vector::borrow(&world.grid, idx))
     }
 
     /// Borrow the grid for neighbor counting.
-    public(package) fun borrow_grid(world: &World): &vector<Option<Tile>> {
+    public fun borrow_grid(world: &World): &vector<Option<Tile>> {
         &world.grid
+    }
+
+    /// Public wrapper for neighbor counting. New function (not modifying existing private fn).
+    public fun count_neighbors(
+        grid: &vector<Option<Tile>>,
+        x: u64, y: u64, w: u64, h: u64,
+    ): u8 {
+        gol_count_neighbors(grid, x, y, w, h)
+    }
+
+    /// Public wrapper for coordinate conversion.
+    public fun to_index(x: u8, y: u8, width: u8): u64 {
+        coord_to_index(x, y, width)
     }
 
     // ── Game of Life logic (inline to avoid circular dependency) ──
@@ -288,7 +301,7 @@ module miniworld::world {
     }
 
     /// Count alive neighbors with toroidal wrapping.
-    public(package) fun gol_count_neighbors(
+    fun gol_count_neighbors(
         grid: &vector<Option<Tile>>,
         x: u64,
         y: u64,
@@ -320,7 +333,7 @@ module miniworld::world {
 
     // ── Helpers ──
 
-    public(package) fun coord_to_index(x: u8, y: u8, width: u8): u64 {
+    fun coord_to_index(x: u8, y: u8, width: u8): u64 {
         (y as u64) * (width as u64) + (x as u64)
     }
 }

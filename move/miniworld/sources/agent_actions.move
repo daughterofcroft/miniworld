@@ -50,11 +50,11 @@ module miniworld::agent_actions {
         assert!(x < width && y < height, EInvalidCoordinate);
 
         // Check tile is alive
-        let idx = world::coord_to_index(x, y, width);
+        let idx = world::to_index(x, y, width);
         assert!(world::is_cell_alive(world, idx), ETileDead);
 
         // Check tile is at risk (would die next pulse: neighbors < 2 or > 3)
-        let neighbors = world::gol_count_neighbors(
+        let neighbors = world::count_neighbors(
             world::borrow_grid(world),
             x as u64,
             y as u64,

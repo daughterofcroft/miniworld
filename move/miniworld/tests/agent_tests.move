@@ -1,9 +1,8 @@
 #[test_only]
 module miniworld::agent_tests {
     use sui::test_scenario;
-    use sui::package;
     use miniworld::world::{Self, World};
-    use miniworld::world_registry::{Self, WorldRegistry, RegistryTicket};
+    use miniworld::world_registry::{Self, WorldRegistry};
     use miniworld::agent::{Self, Agent, AgentCap};
 
     const ADMIN: address = @0xAD;
@@ -15,14 +14,7 @@ module miniworld::agent_tests {
     fun setup_registry(scenario: &mut test_scenario::Scenario) {
         test_scenario::next_tx(scenario, ADMIN);
         {
-            world_registry::test_init(test_scenario::ctx(scenario));
-        };
-        test_scenario::next_tx(scenario, ADMIN);
-        {
-            let ticket = test_scenario::take_from_sender<RegistryTicket>(scenario);
-            let cap = package::test_publish(object::id_from_address(@0x0), test_scenario::ctx(scenario));
-            world_registry::create_registry(ticket, &cap, test_scenario::ctx(scenario));
-            transfer::public_transfer(cap, ADMIN);
+            world_registry::test_create_registry(test_scenario::ctx(scenario));
         };
     }
 

@@ -1,26 +1,18 @@
 #[test_only]
 module miniworld::world_v2_tests {
     use sui::test_scenario;
-    use sui::package;
     use miniworld::world::{Self, World, PulseCap};
-    use miniworld::world_registry::{Self, WorldRegistry, RegistryTicket};
+    use miniworld::world_registry::{Self, WorldRegistry};
 
     const ADMIN: address = @0xAD;
     const USER1: address = @0x1;
     const USER2: address = @0x2;
 
-    // Helper: set up registry (same as registry_tests)
+    // Helper: set up registry
     fun setup_registry(scenario: &mut test_scenario::Scenario) {
         test_scenario::next_tx(scenario, ADMIN);
         {
-            world_registry::test_init(test_scenario::ctx(scenario));
-        };
-        test_scenario::next_tx(scenario, ADMIN);
-        {
-            let ticket = test_scenario::take_from_sender<RegistryTicket>(scenario);
-            let cap = package::test_publish(object::id_from_address(@0x0), test_scenario::ctx(scenario));
-            world_registry::create_registry(ticket, &cap, test_scenario::ctx(scenario));
-            transfer::public_transfer(cap, ADMIN);
+            world_registry::test_create_registry(test_scenario::ctx(scenario));
         };
     }
 

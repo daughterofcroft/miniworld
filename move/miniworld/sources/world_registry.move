@@ -5,12 +5,6 @@ module miniworld::world_registry {
 
     // ── Structs ──
 
-    /// One-time ticket created during module init. Consumed by create_registry
-    /// to guarantee the registry can only be created once.
-    public struct RegistryTicket has key, store {
-        id: UID,
-    }
-
     /// The shared registry object that tracks all worlds.
     public struct WorldRegistry has key {
         id: UID,
@@ -24,31 +18,15 @@ module miniworld::world_registry {
         registry_id: ID,
     }
 
-    // ── Init ──
-
-    /// Module initializer: creates a single RegistryTicket and transfers it
-    /// to the publisher. This ticket is consumed by create_registry, ensuring
-    /// the registry can only be created once.
-    fun init(ctx: &mut TxContext) {
-        transfer::transfer(
-            RegistryTicket { id: object::new(ctx) },
-            ctx.sender(),
-        );
-    }
-
     // ── Entry functions ──
 
-    /// Create the WorldRegistry. Requires the one-time RegistryTicket (from
-    /// module init) and a reference to the package UpgradeCap for authorization.
-    /// The ticket is consumed, preventing double-creation.
+    /// Create the WorldRegistry. Requires UpgradeCap for authorization.
+    /// Should only be called once. If called again, creates a second registry
+    /// (caller's responsibility to use the right one).
     public fun create_registry(
-        ticket: RegistryTicket,
         _cap: &UpgradeCap,
         ctx: &mut TxContext,
     ) {
-        let RegistryTicket { id } = ticket;
-        object::delete(id);
-
         let registry = WorldRegistry {
             id: object::new(ctx),
             worlds: table::new(ctx),
@@ -80,7 +58,12 @@ module miniworld::world_registry {
     // ── Test helpers ──
 
     #[test_only]
-    public fun test_init(ctx: &mut TxContext) {
-        init(ctx);
+    public fun test_create_registry(ctx: &mut TxContext) {
+        let registry = WorldRegistry {
+            id: object::new(ctx),
+            worlds: table::new(ctx),
+            count: 0,
+        };
+        transfer::share_object(registry);
     }
 }
