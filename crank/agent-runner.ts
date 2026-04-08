@@ -3,6 +3,10 @@ import { SuiClient, getFullnodeUrl } from "@mysten/sui/client";
 import { Ed25519Keypair } from "@mysten/sui/keypairs/ed25519";
 import { Transaction } from "@mysten/sui/transactions";
 
+import type { WorldState } from "./lib/types.js";
+import { storeBlob, readBlob } from "./lib/walrus.js";
+import { readWorldState, countNeighbors } from "./lib/world-state.js";
+
 // ── Configuration ──
 
 const PACKAGE_ID = process.env.MINIWORLD_PACKAGE_ID;
@@ -33,37 +37,6 @@ const keypair = Ed25519Keypair.fromSecretKey(
 );
 const client = new SuiClient({ url: getFullnodeUrl("testnet") });
 
-// ── Walrus helpers ──
-
-async function storeBlob(data: Uint8Array): Promise<string> {
-  const response = await fetch(`${WALRUS_PUBLISHER_URL}/v1/blobs`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/octet-stream" },
-    body: data,
-  });
-  if (!response.ok) {
-    throw new Error(`Walrus store failed: ${response.status} ${response.statusText}`);
-  }
-  const result = await response.json();
-  if (result.newlyCreated) {
-    return result.newlyCreated.blobObject.blobId;
-  }
-  if (result.alreadyCertified) {
-    return result.alreadyCertified.blobId;
-  }
-  throw new Error(`Unexpected Walrus response: ${JSON.stringify(result)}`);
-}
-
-async function readBlob(blobId: string): Promise<Uint8Array> {
-  const response = await fetch(
-    `${WALRUS_AGGREGATOR_URL}/v1/blobs/${blobId}`,
-  );
-  if (!response.ok) {
-    throw new Error(`Walrus read failed: ${response.status}`);
-  }
-  return new Uint8Array(await response.arrayBuffer());
-}
-
 // ── Observation types ──
 
 interface AgentObservation {
@@ -90,47 +63,6 @@ let observationManifest: ObservationManifestEntry[] = [];
 let observationManifestBlobId: string | null =
   process.env.WALRUS_AGENT_MANIFEST_BLOB_ID || null;
 
-// ── World state reading ──
-
-interface WorldState {
-  epoch: number;
-  width: number;
-  height: number;
-  grid: (null | { tileType: number; owner: string })[];
-}
-
-async function readWorldState(): Promise<WorldState> {
-  const obj = await client.getObject({
-    id: WORLD_ID,
-    options: { showContent: true },
-  });
-
-  if (!obj.data?.content || obj.data.content.dataType !== "moveObject") {
-    throw new Error("Failed to read World object");
-  }
-
-  const fields = obj.data.content.fields as Record<string, any>;
-  const epoch = Number(fields.epoch);
-  const width = Number(fields.width);
-  const height = Number(fields.height);
-
-  // Parse grid: vector<Option<Tile>> is serialized as array of { vec: [] } or { vec: [{ fields }] }
-  const rawGrid = fields.grid as any[];
-  const grid = rawGrid.map((cell: any) => {
-    if (cell === null || cell === undefined) return null;
-    // Sui serializes Option<T> as the value directly or null
-    if (cell.fields) {
-      return {
-        tileType: Number(cell.fields.tile_type),
-        owner: cell.fields.owner as string,
-      };
-    }
-    return null;
-  });
-
-  return { epoch, width, height, grid };
-}
-
 // ── Guardian strategy ──
 
 interface AtRiskTile {
@@ -139,32 +71,6 @@ interface AtRiskTile {
   tileType: number;
   owner: string;
   neighbors: number;
-}
-
-/**
- * Count alive neighbors using toroidal wrapping.
- * MUST exactly match Move contract's gol_count_neighbors:
- *   dy in 0..2, dx in 0..2, skip (1,1)
- *   nx = (x + dx + w - 1) % w
- *   ny = (y + dy + h - 1) % h
- */
-function countNeighbors(
-  grid: (null | { tileType: number; owner: string })[],
-  x: number,
-  y: number,
-  width: number,
-  height: number,
-): number {
-  let count = 0;
-  for (let dy = 0; dy < 3; dy++) {
-    for (let dx = 0; dx < 3; dx++) {
-      if (dy === 1 && dx === 1) continue;
-      const nx = (x + dx + width - 1) % width;
-      const ny = (y + dy + height - 1) % height;
-      if (grid[ny * width + nx] !== null) count++;
-    }
-  }
-  return count;
 }
 
 /**
@@ -234,7 +140,7 @@ async function executeDefend(x: number, y: number): Promise<string> {
 async function logObservation(obs: AgentObservation): Promise<void> {
   try {
     const data = new TextEncoder().encode(JSON.stringify(obs));
-    const blobId = await storeBlob(data);
+    const blobId = await storeBlob(WALRUS_PUBLISHER_URL, data);
 
     observationManifest.push({
       epoch: obs.epoch,
@@ -256,7 +162,7 @@ async function logObservation(obs: AgentObservation): Promise<void> {
 async function publishObservationManifest(): Promise<void> {
   try {
     const data = new TextEncoder().encode(JSON.stringify(observationManifest));
-    observationManifestBlobId = await storeBlob(data);
+    observationManifestBlobId = await storeBlob(WALRUS_PUBLISHER_URL, data);
     console.log(
       `  Agent manifest published: blobId=${observationManifestBlobId} (${observationManifest.length} entries)`,
     );
@@ -271,7 +177,7 @@ async function publishObservationManifest(): Promise<void> {
 async function recoverObservationManifest(): Promise<void> {
   if (!observationManifestBlobId) return;
   try {
-    const data = await readBlob(observationManifestBlobId);
+    const data = await readBlob(WALRUS_AGGREGATOR_URL, observationManifestBlobId);
     const text = new TextDecoder().decode(data);
     observationManifest = JSON.parse(text);
     console.log(`Recovered agent manifest: ${observationManifest.length} entries`);
@@ -291,7 +197,7 @@ async function tick() {
 
   defending = true;
   try {
-    const state = await readWorldState();
+    const state = await readWorldState(client, WORLD_ID);
 
     // Idempotency: skip if already defended this epoch
     if (lastDefendedEpoch !== null && state.epoch <= lastDefendedEpoch) {
@@ -390,7 +296,7 @@ async function main() {
 
   // Read initial world state
   try {
-    const state = await readWorldState();
+    const state = await readWorldState(client, WORLD_ID);
     console.log(
       `World state: epoch=${state.epoch}, grid=${state.width}x${state.height}`,
     );
