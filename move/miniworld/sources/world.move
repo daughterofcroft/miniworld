@@ -1,16 +1,25 @@
 module miniworld::world {
     use sui::vec_map::{Self, VecMap};
+    use sui::dynamic_field as df;
     use miniworld::events;
+    use miniworld::world_registry::{Self, WorldRegistry};
 
     // ── Error codes ──
     const EInvalidCoordinate: u64 = 0;
     const ERateLimited: u64 = 1;
     const ENotPulseOperator: u64 = 2;
+    const EAlreadyOwned: u64 = 3;
 
     // ── Constants ──
     const GRID_SIZE: u8 = 32;
 
     // ── Structs ──
+
+    /// Dynamic field key for world ownership. Stored on World objects.
+    public struct WorldOwner has copy, drop, store {}
+
+    /// Dynamic field key marking a world as having an agent. Value is the Agent's ID.
+    public struct AgentDeployed has copy, drop, store {}
 
     /// A tile on the grid. Alive cells have Some(Tile), dead cells have None.
     public struct Tile has store, drop, copy {
@@ -125,6 +134,84 @@ module miniworld::world {
         events::emit_pulse_executed(world.epoch, births, deaths, alive_count);
     }
 
+    /// Create a new world, register it in the WorldRegistry, and set the caller as owner.
+    /// This is the Stage 2 replacement for create_world.
+    public fun create_world_v2(
+        registry: &mut WorldRegistry,
+        ctx: &mut TxContext,
+    ) {
+        let mut grid = vector[];
+        let total = (GRID_SIZE as u64) * (GRID_SIZE as u64);
+        let mut i: u64 = 0;
+        while (i < total) {
+            vector::push_back(&mut grid, option::none<Tile>());
+            i = i + 1;
+        };
+
+        let mut world = World {
+            id: object::new(ctx),
+            epoch: 0,
+            width: GRID_SIZE,
+            height: GRID_SIZE,
+            grid,
+            last_placement: vec_map::empty(),
+        };
+
+        // Set ownership via dynamic field
+        df::add(&mut world.id, WorldOwner {}, ctx.sender());
+
+        let world_id = object::id(&world);
+
+        // Register in WorldRegistry
+        world_registry::register_world(registry, world_id);
+
+        let cap = PulseCap {
+            id: object::new(ctx),
+            world_id,
+        };
+
+        transfer::share_object(world);
+        transfer::transfer(cap, ctx.sender());
+    }
+
+    /// Claim ownership of a world that has no owner set (for Stage 1 worlds).
+    /// First-come-first-served. Only succeeds if no WorldOwner dynamic field exists.
+    public fun claim_world_owner(
+        world: &mut World,
+        ctx: &mut TxContext,
+    ) {
+        assert!(!df::exists_(&world.id, WorldOwner {}), EAlreadyOwned);
+        df::add(&mut world.id, WorldOwner {}, ctx.sender());
+    }
+
+    /// Read the owner of a world. Returns the owner address.
+    /// Aborts if no owner is set.
+    public fun world_owner(world: &World): address {
+        *df::borrow(&world.id, WorldOwner {})
+    }
+
+    /// Check if a world has an owner.
+    public fun has_owner(world: &World): bool {
+        df::exists_(&world.id, WorldOwner {})
+    }
+
+    // ── Agent helpers ──
+
+    /// Check if this world has an agent deployed (via AgentDeployed dynamic field).
+    public fun has_agent(world: &World): bool {
+        df::exists_<AgentDeployed>(&world.id, AgentDeployed {})
+    }
+
+    /// Mark this world as having an agent deployed. Stores the agent's ID.
+    public fun set_agent_deployed(world: &mut World, agent_id: ID) {
+        df::add(&mut world.id, AgentDeployed {}, agent_id);
+    }
+
+    /// Get the deployed agent's ID for this world.
+    public fun agent_id(world: &World): ID {
+        *df::borrow<AgentDeployed, ID>(&world.id, AgentDeployed {})
+    }
+
     // ── Public accessors ──
 
     public fun tile_owner(tile: &Tile): address { tile.owner }
@@ -132,6 +219,31 @@ module miniworld::world {
     public fun world_epoch(world: &World): u64 { world.epoch }
     public fun world_width(world: &World): u8 { world.width }
     public fun world_height(world: &World): u8 { world.height }
+
+    // ── Accessors for agent_actions module ──
+
+    /// Check if the cell at grid index `idx` is alive.
+    public fun is_cell_alive(world: &World, idx: u64): bool {
+        option::is_some(vector::borrow(&world.grid, idx))
+    }
+
+    /// Borrow the grid for neighbor counting.
+    public fun borrow_grid(world: &World): &vector<Option<Tile>> {
+        &world.grid
+    }
+
+    /// Public wrapper for neighbor counting. New function (not modifying existing private fn).
+    public fun count_neighbors(
+        grid: &vector<Option<Tile>>,
+        x: u64, y: u64, w: u64, h: u64,
+    ): u8 {
+        gol_count_neighbors(grid, x, y, w, h)
+    }
+
+    /// Public wrapper for coordinate conversion.
+    public fun to_index(x: u8, y: u8, width: u8): u64 {
+        coord_to_index(x, y, width)
+    }
 
     // ── Game of Life logic (inline to avoid circular dependency) ──
 
