@@ -145,10 +145,8 @@ function WorldViewInner({ worldId }: { worldId: string }) {
     !!currentAccount && !!worldOwner && currentAccount.address === worldOwner;
   const canDeploy = isOwner && !hasAgent;
 
-  const [selectedCell, setSelectedCell] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
+  const MAX_PLACEMENTS = 5;
+  const [selectedCells, setSelectedCells] = useState<{ x: number; y: number }[]>([]);
   const [timelineEpoch, setTimelineEpoch] = useState<number | null>(null);
   const [historicalGrid, setHistoricalGrid] = useState<
     (TileData | null)[] | null
@@ -175,8 +173,23 @@ function WorldViewInner({ worldId }: { worldId: string }) {
     });
   }, [timelineEpoch, loadSnapshot]);
 
+  const handleCellClick = useCallback(
+    (x: number, y: number) => {
+      setSelectedCells((prev) => {
+        const exists = prev.findIndex((c) => c.x === x && c.y === y);
+        if (exists >= 0) {
+          // Toggle off
+          return [...prev.slice(0, exists), ...prev.slice(exists + 1)];
+        }
+        if (prev.length >= MAX_PLACEMENTS) return prev;
+        return [...prev, { x, y }];
+      });
+    },
+    [],
+  );
+
   const handlePlaced = useCallback(() => {
-    setSelectedCell(null);
+    setSelectedCells([]);
     setTimeout(() => refetch(), 2000);
   }, [refetch]);
 
@@ -248,9 +261,9 @@ function WorldViewInner({ worldId }: { worldId: string }) {
               width={displayWidth}
               height={displayHeight}
               onCellClick={(x, y) =>
-                !isViewingHistory && setSelectedCell({ x, y })
+                !isViewingHistory && handleCellClick(x, y)
               }
-              selectedCell={isViewingHistory ? null : selectedCell}
+              selectedCells={isViewingHistory ? [] : selectedCells}
               disabled={isViewingHistory}
             />
 
@@ -258,7 +271,7 @@ function WorldViewInner({ worldId }: { worldId: string }) {
             {!isViewingHistory && (
               <TilePlacer
                 worldId={worldId}
-                selectedCell={selectedCell}
+                selectedCells={selectedCells}
                 onPlaced={handlePlaced}
               />
             )}

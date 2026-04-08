@@ -7,7 +7,7 @@ interface WorldGridProps {
   width: number;
   height: number;
   onCellClick: (x: number, y: number) => void;
-  selectedCell: { x: number; y: number } | null;
+  selectedCells: { x: number; y: number }[];
   disabled?: boolean;
 }
 
@@ -25,6 +25,13 @@ function cellStyle(tile: TileData | null): React.CSSProperties {
     return {
       background: "var(--mw-life)",
       boxShadow: "0 0 6px rgba(74, 222, 128, 0.3), inset 0 0 2px rgba(255,255,255,0.1)",
+    };
+  }
+  // tile_type 2 = raid tile (hostile)
+  if (tile.tileType === 2) {
+    return {
+      background: "#e05050",
+      boxShadow: "0 0 6px rgba(224, 80, 80, 0.4), inset 0 0 2px rgba(255,255,255,0.1)",
     };
   }
   const hue = addressToHue(tile.owner);
@@ -69,13 +76,22 @@ export function WorldGrid({
   width,
   height,
   onCellClick,
-  selectedCell,
+  selectedCells,
   disabled,
 }: WorldGridProps) {
   const predictions = useMemo(
     () => predictGrid(grid, width, height),
     [grid, width, height],
   );
+
+  // Build a lookup map for selected cells
+  const selectedMap = useMemo(() => {
+    const map = new Map<string, number>();
+    selectedCells.forEach((cell, idx) => {
+      map.set(`${cell.x},${cell.y}`, idx + 1);
+    });
+    return map;
+  }, [selectedCells]);
 
   return (
     <div
@@ -102,7 +118,8 @@ export function WorldGrid({
           const x = idx % width;
           const y = Math.floor(idx / width);
           const tile = grid[idx] ?? null;
-          const isSelected = selectedCell?.x === x && selectedCell?.y === y;
+          const selectionNumber = selectedMap.get(`${x},${y}`);
+          const isSelected = selectionNumber !== undefined;
           const alive = tile !== null;
           const prediction = predictions[idx];
           const pStyle = predictionStyle(prediction);
@@ -124,10 +141,31 @@ export function WorldGrid({
                 outlineOffset: isSelected ? "-1px" : undefined,
                 zIndex: isSelected ? 1 : undefined,
                 transition: "background 0.15s ease, box-shadow 0.15s ease",
+                position: isSelected ? "relative" : undefined,
                 ...cellStyle(tile),
                 ...(isSelected ? {} : pStyle),
               }}
-            />
+            >
+              {isSelected && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: "50%",
+                    left: "50%",
+                    transform: "translate(-50%, -50%)",
+                    fontSize: 8,
+                    fontFamily: "var(--mw-font-mono)",
+                    fontWeight: 700,
+                    color: "var(--mw-text)",
+                    lineHeight: 1,
+                    pointerEvents: "none",
+                    textShadow: "0 0 3px rgba(0,0,0,0.8)",
+                  }}
+                >
+                  {selectionNumber}
+                </span>
+              )}
+            </div>
           );
         })}
       </div>
