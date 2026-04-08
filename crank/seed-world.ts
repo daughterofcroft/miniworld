@@ -16,7 +16,7 @@ if (!PACKAGE_ID || !WORLD_ID || !PULSE_CAP_ID || !CRANK_SECRET) {
 }
 
 const keyBytes = Buffer.from(CRANK_SECRET, "base64");
-const keypair = Ed25519Keypair.fromSecretKey(
+const mainKeypair = Ed25519Keypair.fromSecretKey(
   keyBytes.length === 33 ? keyBytes.subarray(1) : keyBytes,
 );
 const client = new SuiClient({ url: getFullnodeUrl("testnet") });
@@ -61,16 +61,15 @@ async function main() {
   console.log("║     Miniworld World Seeder           ║");
   console.log("╚══════════════════════════════════════╝");
   console.log(`Seeding patterns: ${selectedPatterns.join(", ")}`);
-  console.log(`Wallet: ${keypair.toSuiAddress()}`);
+  console.log(`Wallet: ${mainKeypair.toSuiAddress()}`);
   console.log("");
 
-  // Collect all cells to place
+  // Collect all cells
   const allCells: { x: number; y: number; pattern: string }[] = [];
   for (const name of selectedPatterns) {
     const p = PATTERNS[name];
     if (!p) {
-      console.error(`Unknown pattern: ${name}`);
-      console.error(`Available: ${Object.keys(PATTERNS).join(", ")}`);
+      console.error(`Unknown pattern: ${name}. Available: ${Object.keys(PATTERNS).join(", ")}`);
       process.exit(1);
     }
     for (const [cx, cy] of p.cells) {
@@ -78,26 +77,64 @@ async function main() {
     }
   }
 
-  console.log(`Total cells to place: ${allCells.length}`);
+  console.log(`Total cells: ${allCells.length}`);
 
-  // Build ONE Programmable Transaction Block with all placements.
-  // Rate limit is 1 place per address per epoch, so we interleave:
-  //   place_tile → pulse → place_tile → pulse → ...
-  // Sui PTBs execute sequentially: the pulse advances the epoch mid-TX,
-  // so the next place_tile sees the new epoch. All in one gas payment.
-  const tx = new Transaction();
-  tx.setGasBudget(50_000_000);
+  // Strategy: use multiple temporary keypairs so all tiles in one pattern
+  // can be placed in the SAME epoch. GoL kills isolated tiles, so patterns
+  // must land simultaneously. Each address gets 1 placement per epoch.
+  //
+  // Steps:
+  // 1. Generate N temporary keypairs (one per tile)
+  // 2. Fund each with a tiny SUI amount from the main wallet (one PTB)
+  // 3. Each temp address places its tile (parallel TXs, same epoch)
+  // 4. Main wallet pulses once to "activate" the pattern
+  //
+  // This uses 3 transactions total regardless of tile count.
 
-  // Start with a pulse to clear any rate limit from the current epoch
-  tx.moveCall({
-    target: `${PACKAGE_ID}::world::pulse`,
-    arguments: [tx.object(WORLD_ID!), tx.object(PULSE_CAP_ID!)],
+  const tempKeypairs = allCells.map(() => new Ed25519Keypair());
+  const fundAmount = 10_000_000; // 0.01 SUI per temp address (enough for 1 place_tile)
+
+  // Step 1: Fund all temp addresses in one PTB
+  console.log(`\nFunding ${tempKeypairs.length} temp addresses...`);
+  const fundTx = new Transaction();
+  for (const kp of tempKeypairs) {
+    const [coin] = fundTx.splitCoins(fundTx.gas, [fundAmount]);
+    fundTx.transferObjects([coin], kp.toSuiAddress());
+  }
+
+  const fundResult = await client.signAndExecuteTransaction({
+    signer: mainKeypair,
+    transaction: fundTx,
+    options: { showEffects: true },
   });
+  await client.waitForTransaction({ digest: fundResult.digest });
 
-  for (let i = 0; i < allCells.length; i++) {
-    const cell = allCells[i];
+  if (fundResult.effects?.status?.status !== "success") {
+    console.error("Funding FAILED:", fundResult.effects?.status);
+    process.exit(1);
+  }
+  console.log(`  Funded — ${fundResult.digest.slice(0, 12)}...`);
 
-    // Place tile
+  // Step 2: Pulse first to ensure clean epoch (clear main wallet rate limit)
+  console.log("Pulsing to fresh epoch...");
+  const pulseTx = new Transaction();
+  pulseTx.moveCall({
+    target: `${PACKAGE_ID}::world::pulse`,
+    arguments: [pulseTx.object(WORLD_ID!), pulseTx.object(PULSE_CAP_ID!)],
+  });
+  const pulseResult = await client.signAndExecuteTransaction({
+    signer: mainKeypair,
+    transaction: pulseTx,
+    options: { showEffects: true },
+  });
+  await client.waitForTransaction({ digest: pulseResult.digest });
+  console.log(`  Pulsed — ${pulseResult.digest.slice(0, 12)}...`);
+
+  // Step 3: All temp addresses place tiles simultaneously (parallel TXs, same epoch)
+  console.log("Placing all tiles in parallel...");
+  const placementPromises = allCells.map(async (cell, i) => {
+    const kp = tempKeypairs[i];
+    const tx = new Transaction();
     tx.moveCall({
       target: `${PACKAGE_ID}::world::place_tile`,
       arguments: [
@@ -108,40 +145,27 @@ async function main() {
       ],
     });
 
-    // Pulse after each tile to advance epoch for the next placement
-    if (i < allCells.length - 1) {
-      tx.moveCall({
-        target: `${PACKAGE_ID}::world::pulse`,
-        arguments: [tx.object(WORLD_ID!), tx.object(PULSE_CAP_ID!)],
+    try {
+      const result = await client.signAndExecuteTransaction({
+        signer: kp,
+        transaction: tx,
+        options: { showEffects: true },
       });
+      await client.waitForTransaction({ digest: result.digest });
+      const ok = result.effects?.status?.status === "success";
+      console.log(`  ${ok ? "OK" : "FAIL"} (${cell.x},${cell.y}) [${cell.pattern}]`);
+      return ok;
+    } catch (err: any) {
+      console.error(`  ERR (${cell.x},${cell.y}) [${cell.pattern}]: ${err.message?.slice(0, 60)}`);
+      return false;
     }
-
-    console.log(`  [${i + 1}/${allCells.length}] (${cell.x}, ${cell.y}) [${cell.pattern}]`);
-  }
-
-  console.log("");
-  console.log(`Submitting 1 transaction with ${allCells.length} placements + ${allCells.length - 1} pulses...`);
-
-  const result = await client.signAndExecuteTransaction({
-    signer: keypair,
-    transaction: tx,
-    options: { showEffects: true, showEvents: true },
   });
-  await client.waitForTransaction({ digest: result.digest });
 
-  const status = result.effects?.status?.status;
-  if (status !== "success") {
-    console.error(`Transaction FAILED: ${status}`);
-    console.error(JSON.stringify(result.effects?.status, null, 2));
-    process.exit(1);
-  }
-
-  console.log(`Transaction: ${result.digest}`);
-  console.log(`Status: ${status}`);
-  console.log(`Gas used: ${Number(result.effects?.gasUsed?.computationCost ?? 0) / 1e6}M computation`);
+  const results = await Promise.all(placementPromises);
+  const placed = results.filter(Boolean).length;
 
   // Read final state
-  const obj = await client.getObject({ id: WORLD_ID, options: { showContent: true } });
+  const obj = await client.getObject({ id: WORLD_ID!, options: { showContent: true } });
   if (obj.data?.content?.dataType === "moveObject") {
     const fields = obj.data.content.fields as Record<string, any>;
     const grid = fields.grid as any[];
@@ -149,9 +173,9 @@ async function main() {
     console.log(`\nWorld: epoch=${fields.epoch}, alive=${alive}/${grid.length}`);
   }
 
-  console.log("\n╔══════════════════════════════════════╗");
-  console.log("║     Seeding Complete (1 TX)          ║");
-  console.log("╚══════════════════════════════════════╝");
+  console.log(`\n╔══════════════════════════════════════╗`);
+  console.log(`║  Seeded ${placed}/${allCells.length} tiles (3 TXs total)     ║`);
+  console.log(`╚══════════════════════════════════════╝`);
 }
 
 main().catch((err) => {
