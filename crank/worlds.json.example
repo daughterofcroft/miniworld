@@ -1,0 +1,9 @@
+[
+  {
+    "worldId": "0x...",
+    "pulseCapId": "0x...",
+    "harvestCapId": "0x...",
+    "pulsePoolId": "0x...",
+    "name": "My World"
+  }
+]

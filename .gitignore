@@ -10,4 +10,5 @@ move/miniworld/build/
 crank/node_modules/
 crank/.env
 crank/worlds.json
+crank/agents.json
 .gstack/

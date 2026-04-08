@@ -16,6 +16,8 @@ import { readWorldState } from "./lib/world-state.js";
 interface WorldConfig {
   worldId: string;
   pulseCapId: string;
+  harvestCapId?: string;  // Optional: if present, crank harvests after pulse
+  pulsePoolId?: string;   // Required with harvestCapId
   name: string;
 }
 
@@ -148,6 +150,28 @@ async function executePulse(worldId: string, pulseCapId: string): Promise<string
   return result.digest;
 }
 
+// ── Harvest execution (separate TX from pulse) ──
+
+async function executeHarvest(ws: WorldRunState): Promise<string> {
+  const tx = new Transaction();
+  tx.moveCall({
+    target: `${PACKAGE_ID}::harvest::harvest`,
+    arguments: [
+      tx.object(ws.config.worldId),      // &World
+      tx.object(ws.config.pulsePoolId!),  // &mut PulsePool
+      tx.object(ws.config.harvestCapId!), // &HarvestCap
+    ],
+  });
+  const result = await client.signAndExecuteTransaction({
+    signer: keypair,
+    transaction: tx,
+    options: { showEffects: true },
+  });
+  await client.waitForTransaction({ digest: result.digest });
+  console.log(`[${ws.config.name}] Harvest: ${result.digest}`);
+  return result.digest;
+}
+
 // ── Snapshot ──
 
 async function takeSnapshot(
@@ -246,6 +270,16 @@ async function tickWorld(ws: WorldRunState): Promise<void> {
     console.log(
       `[${ws.config.name}] Pulse #${ws.pulseCount}: ${digest} (epoch ${state.epoch} -> ${state.epoch + 1})`,
     );
+
+    // Harvest PULSE (separate TX — if harvest fails, pulse already succeeded)
+    if (ws.config.harvestCapId && ws.config.pulsePoolId) {
+      try {
+        await executeHarvest(ws);
+      } catch (err) {
+        console.error(`[${ws.config.name}] Harvest failed:`, err);
+        // Best-effort — pulse already succeeded, PULSE yield skipped this tick
+      }
+    }
 
     // Take snapshot every Nth pulse
     if (ws.pulseCount % SNAPSHOT_EVERY_N === 0) {
