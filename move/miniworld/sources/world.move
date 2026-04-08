@@ -2,7 +2,8 @@ module miniworld::world {
     use sui::vec_map::{Self, VecMap};
     use sui::dynamic_field as df;
     use miniworld::events;
-    use miniworld::world_registry::{Self, WorldRegistry};
+    use miniworld::world_registry::{Self, WorldRegistry, RegistryCap};
+    use pulse::pulse::{Self, PulsePool};
 
     // ── Error codes ──
     const EInvalidCoordinate: u64 = 0;
@@ -227,6 +228,57 @@ module miniworld::world {
 
         transfer::share_object(world);
         transfer::transfer(cap, ctx.sender());
+    }
+
+    /// Create a new world with PULSE bootstrap and HarvestCap.
+    /// Stage 3 replacement for create_world_v2.
+    public fun create_world_v3(
+        registry: &mut WorldRegistry,
+        registry_cap: &RegistryCap,
+        pool: &mut PulsePool,
+        ctx: &mut TxContext,
+    ) {
+        // Create the world (same as create_world_v2 internals)
+        let mut grid = vector[];
+        let total = (GRID_SIZE as u64) * (GRID_SIZE as u64);
+        let mut i: u64 = 0;
+        while (i < total) {
+            vector::push_back(&mut grid, option::none<Tile>());
+            i = i + 1;
+        };
+
+        let mut world = World {
+            id: object::new(ctx),
+            epoch: 0,
+            width: GRID_SIZE,
+            height: GRID_SIZE,
+            grid,
+            last_placement: vec_map::empty(),
+        };
+
+        // Set ownership
+        df::add(&mut world.id, WorldOwner {}, ctx.sender());
+
+        let world_id = object::id(&world);
+
+        // Register in WorldRegistry (guarded by RegistryCap)
+        world_registry::register_world_v2(registry, registry_cap, world_id);
+
+        // Create PulseCap
+        let cap = PulseCap {
+            id: object::new(ctx),
+            world_id,
+        };
+
+        // Create HarvestCap for this world
+        let harvest_cap = pulse::create_harvest_cap(world_id, ctx);
+
+        // Bootstrap: credit 100 PULSE to creator
+        pulse::credit_pool(pool, ctx.sender(), 100);
+
+        transfer::share_object(world);
+        transfer::transfer(cap, ctx.sender());
+        pulse::transfer_harvest_cap(harvest_cap, ctx.sender());
     }
 
     /// Claim ownership of a world that has no owner set (for Stage 1 worlds).
