@@ -386,6 +386,59 @@ module miniworld::world {
         count
     }
 
+    // ── Raid helpers (public(package)) ──
+
+    /// Dynamic field key for raid rate limiting on target worlds.
+    public struct RaidTracker has copy, drop, store {
+        raider: address,
+    }
+
+    /// Value stored in the RaidTracker dynamic field.
+    public struct RaidData has store, drop {
+        epoch: u64,
+    }
+
+    /// Place a raid tile (tile_type=2) at (x, y). Only callable from within the miniworld package.
+    public(package) fun place_raid_tile(
+        world: &mut World,
+        x: u8,
+        y: u8,
+        raider: address,
+    ) {
+        let idx = coord_to_index(x, y, world.width);
+        let cell = vector::borrow_mut(&mut world.grid, idx);
+        *cell = option::some(Tile { tile_type: 2, owner: raider });
+    }
+
+    /// Check if an address has already raided this world this epoch.
+    /// Returns true if rate limited (already raided this epoch).
+    public(package) fun check_raid_rate_limit(
+        world: &World,
+        raider: address,
+    ): bool {
+        let key = RaidTracker { raider };
+        if (df::exists_<RaidTracker>(&world.id, key)) {
+            let data = df::borrow<RaidTracker, RaidData>(&world.id, key);
+            data.epoch == world.epoch
+        } else {
+            false
+        }
+    }
+
+    /// Record a raid for rate limiting on the target world.
+    public(package) fun record_raid(
+        world: &mut World,
+        raider: address,
+    ) {
+        let key = RaidTracker { raider };
+        if (df::exists_<RaidTracker>(&world.id, key)) {
+            let data = df::borrow_mut<RaidTracker, RaidData>(&mut world.id, key);
+            data.epoch = world.epoch;
+        } else {
+            df::add(&mut world.id, key, RaidData { epoch: world.epoch });
+        };
+    }
+
     // ── Helpers ──
 
     fun coord_to_index(x: u8, y: u8, width: u8): u64 {
