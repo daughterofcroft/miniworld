@@ -1,12 +1,18 @@
 module miniworld::agent {
     use sui::event;
+    use sui::dynamic_field as df;
     use miniworld::world::{Self, World};
 
     // ── Error codes ──
     const ENotWorldOwner: u64 = 200;
     const EAgentAlreadyDeployed: u64 = 201;
+    const EAgentNotDeployed: u64 = 202;
+    const EAgentAlreadyRevoked: u64 = 203;
 
     // ── Structs ──
+
+    /// Dynamic field key marking an agent as revoked.
+    public struct AgentRevoked has copy, drop, store {}
 
     /// The agent object. Shared so both users (inspect) and agent-runner (act) can reference it.
     public struct Agent has key {
@@ -99,4 +105,36 @@ module miniworld::agent {
     public fun agent_actions_taken(agent: &Agent): u64 { agent.actions_taken }
     public fun agent_last_action_epoch(agent: &Agent): u64 { agent.last_action_epoch }
     public fun agent_cap_agent_id(cap: &AgentCap): ID { cap.agent_id }
+
+    // ── Revocation ──
+
+    /// Revoke an agent. Only the world owner can call this.
+    /// Clears AgentDeployed on the world (allowing a new agent to be deployed).
+    /// Marks the Agent as revoked via dynamic field (Agent shared object persists on Sui).
+    public fun revoke_agent(
+        world: &mut World,
+        agent: &mut Agent,
+        ctx: &mut TxContext,
+    ) {
+        // Check caller is world owner
+        assert!(world::has_owner(world), ENotWorldOwner);
+        assert!(world::world_owner(world) == ctx.sender(), ENotWorldOwner);
+
+        // Check this agent is actually deployed on this world
+        assert!(world::has_agent(world), EAgentNotDeployed);
+
+        // Check agent isn't already revoked
+        assert!(!df::exists_(&agent.id, AgentRevoked {}), EAgentAlreadyRevoked);
+
+        // Mark agent as revoked
+        df::add(&mut agent.id, AgentRevoked {}, true);
+
+        // Clear AgentDeployed on the world
+        world::clear_agent_deployed(world);
+    }
+
+    /// Check if an agent is revoked.
+    public fun is_revoked(agent: &Agent): bool {
+        df::exists_(&agent.id, AgentRevoked {})
+    }
 }
