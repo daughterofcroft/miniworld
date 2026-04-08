@@ -9,9 +9,11 @@ module miniworld::world {
     const ERateLimited: u64 = 1;
     const ENotPulseOperator: u64 = 2;
     const EAlreadyOwned: u64 = 3;
+    const ERateLimitedV2: u64 = 10;
 
     // ── Constants ──
     const GRID_SIZE: u8 = 32;
+    const MAX_PLACEMENTS_V2: u8 = 5;
 
     // ── Structs ──
 
@@ -20,6 +22,17 @@ module miniworld::world {
 
     /// Dynamic field key marking a world as having an agent. Value is the Agent's ID.
     public struct AgentDeployed has copy, drop, store {}
+
+    /// Dynamic field key for tracking placements per address per epoch.
+    public struct PlacementTracker has copy, drop, store {
+        addr: address,
+    }
+
+    /// Value stored in the PlacementTracker dynamic field.
+    public struct PlacementData has store, drop {
+        epoch: u64,
+        count: u8,
+    }
 
     /// A tile on the grid. Alive cells have Some(Tile), dead cells have None.
     public struct Tile has store, drop, copy {
@@ -93,6 +106,48 @@ module miniworld::world {
             vec_map::remove(&mut world.last_placement, &sender);
         };
         vec_map::insert(&mut world.last_placement, sender, world.epoch);
+
+        let idx = coord_to_index(x, y, world.width);
+        let cell = vector::borrow_mut(&mut world.grid, idx);
+        let previous_owner = if (option::is_some(cell)) {
+            let old_tile = option::borrow(cell);
+            option::some(old_tile.owner)
+        } else {
+            option::none()
+        };
+
+        *cell = option::some(Tile { tile_type, owner: sender });
+
+        events::emit_tile_placed(x, y, tile_type, sender, world.epoch, previous_owner);
+    }
+
+    /// Place a tile with a 5-per-epoch rate limit. Uses dynamic fields instead of VecMap.
+    public fun place_tile_v2(
+        world: &mut World,
+        x: u8,
+        y: u8,
+        tile_type: u8,
+        ctx: &mut TxContext,
+    ) {
+        assert!(x < world.width && y < world.height, EInvalidCoordinate);
+
+        let sender = ctx.sender();
+        let tracker_key = PlacementTracker { addr: sender };
+
+        // Check/update rate limit via dynamic field
+        if (df::exists_(&world.id, tracker_key)) {
+            let data = df::borrow_mut<PlacementTracker, PlacementData>(&mut world.id, tracker_key);
+            if (data.epoch == world.epoch) {
+                assert!(data.count < MAX_PLACEMENTS_V2, ERateLimitedV2);
+                data.count = data.count + 1;
+            } else {
+                // New epoch, reset counter
+                data.epoch = world.epoch;
+                data.count = 1;
+            };
+        } else {
+            df::add(&mut world.id, tracker_key, PlacementData { epoch: world.epoch, count: 1 });
+        };
 
         let idx = coord_to_index(x, y, world.width);
         let cell = vector::borrow_mut(&mut world.grid, idx);
