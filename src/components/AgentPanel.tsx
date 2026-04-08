@@ -3,7 +3,42 @@ import { useAgentMemory } from "../hooks/useAgentMemory";
 
 const STRATEGY_LABELS: Record<number, string> = {
   0: "Guardian",
+  1: "Sentinel",
+  2: "Warden",
+  3: "Keeper",
+  4: "Shepherd",
 };
+
+const STRATEGY_ICONS: Record<number, string> = {
+  0: "\u{1f6e1}",  // shield
+  1: "\u{1f441}",  // eye
+  2: "\u{1f512}",  // lock
+  3: "\u{1f511}",  // key
+  4: "\u{1f33f}",  // herb
+};
+
+/**
+ * Generate a fun name from an agent ID (first 8 hex chars mapped to
+ * adjective + noun pairs).
+ */
+function agentNickname(agentId: string): string {
+  const hex = agentId.replace(/^0x/, "").slice(0, 8);
+  const adjectives = [
+    "Swift", "Quiet", "Bold", "Keen", "Bright",
+    "Calm", "Dark", "Fierce", "Iron", "Jade",
+    "Noble", "Prime", "Sage", "True", "Vast",
+    "Warm",
+  ];
+  const nouns = [
+    "Fox", "Hawk", "Wolf", "Lynx", "Bear",
+    "Deer", "Crow", "Moth", "Vole", "Wren",
+    "Pike", "Dove", "Hare", "Newt", "Ibis",
+    "Seal",
+  ];
+  const a = parseInt(hex.slice(0, 4), 16) % adjectives.length;
+  const n = parseInt(hex.slice(4, 8), 16) % nouns.length;
+  return `${adjectives[a]} ${nouns[n]}`;
+}
 
 interface AgentPanelProps {
   agentId: string;
@@ -59,6 +94,8 @@ export function AgentPanel({ agentId, worldId }: AgentPanelProps) {
   }
 
   const strategyLabel = STRATEGY_LABELS[agent.strategy] ?? `Strategy ${agent.strategy}`;
+  const strategyIcon = STRATEGY_ICONS[agent.strategy] ?? "\u{1f916}";
+  const nickname = agentNickname(agentId);
   const showLowGas = balance !== null && balance !== undefined && balance < 0.1;
 
   return (
@@ -84,8 +121,8 @@ export function AgentPanel({ agentId, worldId }: AgentPanelProps) {
           gap: 8,
         }}
       >
-        <span style={{ fontSize: 16 }}>&#x1f6e1;</span>
-        Guardian Agent
+        <span style={{ fontSize: 16 }}>{strategyIcon}</span>
+        {nickname}
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>

@@ -154,6 +154,7 @@ function WorldViewInner({ worldId }: { worldId: string }) {
   const [historicalGrid, setHistoricalGrid] = useState<
     (TileData | null)[] | null
   >(null);
+  const [awayBanner, setAwayBanner] = useState<{ epochs: number; aliveDelta: number } | null>(null);
 
   // Store this world as "last own world" if user is the owner (for raid source)
   useEffect(() => {
@@ -161,6 +162,25 @@ function WorldViewInner({ worldId }: { worldId: string }) {
       localStorage.setItem("miniworld_last_own_world", worldId);
     }
   }, [isOwner, worldId]);
+
+  // "While you were away" banner
+  useEffect(() => {
+    if (!worldState) return;
+    const key = `last_seen_epoch_${worldId}`;
+    const lastSeen = Number(localStorage.getItem(key) ?? 0);
+    const currentEpoch = worldState.epoch;
+
+    if (lastSeen > 0 && currentEpoch - lastSeen > 1) {
+      // Calculate alive delta from stored count
+      const aliveKey = `last_seen_alive_${worldId}`;
+      const lastAlive = Number(localStorage.getItem(aliveKey) ?? 0);
+      const aliveDelta = worldState.aliveCount - lastAlive;
+      setAwayBanner({ epochs: currentEpoch - lastSeen, aliveDelta });
+    }
+
+    localStorage.setItem(key, String(currentEpoch));
+    localStorage.setItem(`last_seen_alive_${worldId}`, String(worldState.aliveCount));
+  }, [worldState?.epoch, worldId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const interval = setInterval(() => refetch(), 10_000);
@@ -243,6 +263,48 @@ function WorldViewInner({ worldId }: { worldId: string }) {
         >
           {worldId.slice(0, 8)}...{worldId.slice(-6)}
         </div>
+
+        {/* While you were away banner */}
+        {awayBanner && (
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 400,
+              padding: "10px 16px",
+              background: "rgba(212, 160, 38, 0.08)",
+              border: "1px solid rgba(212, 160, 38, 0.25)",
+              borderRadius: "var(--mw-r-md)",
+              fontFamily: "var(--mw-font-body)",
+              fontSize: 13,
+              color: "#d4a026",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <span>
+              While you were away ({awayBanner.epochs} pulses):{" "}
+              <strong>
+                {awayBanner.aliveDelta > 0 ? "+" : ""}
+                {awayBanner.aliveDelta} tiles changed
+              </strong>
+            </span>
+            <button
+              onClick={() => setAwayBanner(null)}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#d4a026",
+                cursor: "pointer",
+                fontSize: 16,
+                lineHeight: 1,
+                padding: "0 4px",
+              }}
+            >
+              x
+            </button>
+          </div>
+        )}
 
         {isLoading ? (
           <div style={{ padding: "80px 0", color: "var(--mw-muted)" }}>
