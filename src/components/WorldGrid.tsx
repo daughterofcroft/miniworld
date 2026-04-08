@@ -1,4 +1,6 @@
+import { useMemo } from "react";
 import type { TileData } from "../hooks/useWorldState";
+import { predictGrid, type CellPrediction } from "../lib/gol";
 
 interface WorldGridProps {
   grid: (TileData | null)[];
@@ -32,6 +34,36 @@ function cellStyle(tile: TileData | null): React.CSSProperties {
   };
 }
 
+function predictionStyle(prediction: CellPrediction): React.CSSProperties {
+  switch (prediction) {
+    case 'safe':
+      return {
+        outline: "1px solid rgba(74, 222, 128, 0.35)",
+        outlineOffset: "-1px",
+      };
+    case 'at-risk':
+      return {
+        animation: "pulse-warning 2s ease-in-out infinite",
+      };
+    case 'doomed':
+      return {
+        boxShadow: "inset 0 0 4px 1px rgba(239, 68, 68, 0.45)",
+      };
+    case 'birth':
+      return {
+        background: "radial-gradient(circle at center, rgba(96, 165, 250, 0.3) 30%, transparent 70%)",
+      };
+    case 'raider':
+      return {
+        outline: "1.5px solid #ef4444",
+        outlineOffset: "-1px",
+      };
+    case 'dead':
+    default:
+      return {};
+  }
+}
+
 export function WorldGrid({
   grid,
   width,
@@ -40,6 +72,11 @@ export function WorldGrid({
   selectedCell,
   disabled,
 }: WorldGridProps) {
+  const predictions = useMemo(
+    () => predictGrid(grid, width, height),
+    [grid, width, height],
+  );
+
   return (
     <div
       style={{
@@ -67,6 +104,8 @@ export function WorldGrid({
           const tile = grid[idx] ?? null;
           const isSelected = selectedCell?.x === x && selectedCell?.y === y;
           const alive = tile !== null;
+          const prediction = predictions[idx];
+          const pStyle = predictionStyle(prediction);
 
           return (
             <div
@@ -74,8 +113,8 @@ export function WorldGrid({
               onClick={() => !disabled && onCellClick(x, y)}
               title={
                 tile
-                  ? `(${x},${y}) owner: ${String(tile.owner).slice(0, 8)}... type: ${tile.tileType}`
-                  : `(${x},${y}) empty`
+                  ? `(${x},${y}) owner: ${String(tile.owner).slice(0, 8)}... type: ${tile.tileType} [${prediction}]`
+                  : `(${x},${y}) empty${prediction === 'birth' ? ' [birth]' : ''}`
               }
               style={{
                 borderRadius: 1,
@@ -86,6 +125,7 @@ export function WorldGrid({
                 zIndex: isSelected ? 1 : undefined,
                 transition: "background 0.15s ease, box-shadow 0.15s ease",
                 ...cellStyle(tile),
+                ...(isSelected ? {} : pStyle),
               }}
             />
           );
