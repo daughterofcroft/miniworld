@@ -12,6 +12,8 @@ import { Header } from "../components/Header";
 import { AgentPanel } from "../components/AgentPanel";
 import { DeployAgent } from "../components/DeployAgent";
 import { ClaimPulse } from "../components/ClaimPulse";
+import { RaidButton } from "../components/RaidButton";
+import { RaidLog } from "../components/RaidLog";
 
 function Stat({
   value,
@@ -153,6 +155,13 @@ function WorldViewInner({ worldId }: { worldId: string }) {
     (TileData | null)[] | null
   >(null);
 
+  // Store this world as "last own world" if user is the owner (for raid source)
+  useEffect(() => {
+    if (isOwner && worldId) {
+      localStorage.setItem("miniworld_last_own_world", worldId);
+    }
+  }, [isOwner, worldId]);
+
   useEffect(() => {
     const interval = setInterval(() => refetch(), 10_000);
     return () => clearInterval(interval);
@@ -291,6 +300,19 @@ function WorldViewInner({ worldId }: { worldId: string }) {
 
             {/* Claim PULSE */}
             <ClaimPulse />
+
+            {/* Raid (only when viewing someone else's world) */}
+            {!isOwner && currentAccount && (
+              <RaidButton
+                targetWorldId={worldId}
+                onRaidSuccess={() => {
+                  setTimeout(() => refetch(), 2000);
+                }}
+              />
+            )}
+
+            {/* Raid log */}
+            <RaidLog worldId={worldId} />
 
             {/* Agent section */}
             {hasAgent && agentId && (
