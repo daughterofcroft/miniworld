@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "react-router-dom";
+import { useCurrentAccount, useSuiClient } from "@mysten/dapp-kit";
+import { useQuery } from "@tanstack/react-query";
 import { useWorldState } from "../hooks/useWorldState";
 import { useWalrusSnapshots } from "../hooks/useWalrusSnapshots";
 import type { TileData } from "../hooks/useWorldState";
@@ -7,6 +9,8 @@ import { WorldGrid } from "../components/WorldGrid";
 import { TilePlacer } from "../components/TilePlacer";
 import { Timeline } from "../components/Timeline";
 import { Header } from "../components/Header";
+import { AgentPanel } from "../components/AgentPanel";
+import { DeployAgent } from "../components/DeployAgent";
 
 function Stat({
   value,
@@ -70,12 +74,76 @@ export function WorldView() {
 }
 
 function WorldViewInner({ worldId }: { worldId: string }) {
+  const currentAccount = useCurrentAccount();
+  const suiClient = useSuiClient();
   const { worldState, isLoading, refetch } = useWorldState(worldId);
   const {
     manifest,
     loadSnapshot,
     isLoading: manifestLoading,
   } = useWalrusSnapshots();
+
+  // Query dynamic fields on the world to find AgentDeployed and WorldOwner
+  const { data: dynFields, refetch: refetchDynFields } = useQuery({
+    queryKey: ["world-dyn-fields", worldId],
+    queryFn: async () => {
+      const page = await suiClient.getDynamicFields({ parentId: worldId });
+      return page.data;
+    },
+    refetchInterval: 15_000,
+  });
+
+  const agentDynField = dynFields?.find((f) =>
+    f.name.type.includes("AgentDeployed"),
+  );
+  const ownerDynField = dynFields?.find((f) =>
+    f.name.type.includes("WorldOwner"),
+  );
+
+  // Read the agent ID from the AgentDeployed dynamic field value
+  const { data: agentIdFromChain } = useQuery({
+    queryKey: ["agent-id-field", agentDynField?.objectId],
+    queryFn: async () => {
+      if (!agentDynField) return null;
+      const obj = await suiClient.getObject({
+        id: agentDynField.objectId,
+        options: { showContent: true },
+      });
+      if (obj.data?.content?.dataType !== "moveObject") return null;
+      const fields = obj.data.content.fields as Record<string, any>;
+      // Dynamic field object has { name, value } — value is the agent ID
+      return (fields.value as string) ?? null;
+    },
+    enabled: !!agentDynField,
+  });
+
+  // Read world owner address from the WorldOwner dynamic field
+  const { data: worldOwner } = useQuery({
+    queryKey: ["world-owner-field", ownerDynField?.objectId],
+    queryFn: async () => {
+      if (!ownerDynField) return null;
+      const obj = await suiClient.getObject({
+        id: ownerDynField.objectId,
+        options: { showContent: true },
+      });
+      if (obj.data?.content?.dataType !== "moveObject") return null;
+      const fields = obj.data.content.fields as Record<string, any>;
+      return (fields.value as string) ?? null;
+    },
+    enabled: !!ownerDynField,
+  });
+
+  // Also check localStorage as fallback for agent ID
+  const agentId =
+    agentIdFromChain ??
+    (typeof window !== "undefined"
+      ? localStorage.getItem(`miniworld_agent_id_${worldId}`)
+      : null);
+
+  const hasAgent = !!agentDynField || !!agentId;
+  const isOwner =
+    !!currentAccount && !!worldOwner && currentAccount.address === worldOwner;
+  const canDeploy = isOwner && !hasAgent;
 
   const [selectedCell, setSelectedCell] = useState<{
     x: number;
@@ -205,6 +273,18 @@ function WorldViewInner({ worldId }: { worldId: string }) {
               >
                 Viewing epoch {timelineEpoch}
               </div>
+            )}
+
+            {/* Agent section */}
+            {hasAgent && agentId && (
+              <AgentPanel agentId={agentId} worldId={worldId} />
+            )}
+
+            {canDeploy && (
+              <DeployAgent
+                worldId={worldId}
+                onDeployed={() => refetchDynFields()}
+              />
             )}
 
             {/* Timeline */}
