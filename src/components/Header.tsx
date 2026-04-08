@@ -1,8 +1,38 @@
-import { ConnectButton } from "@mysten/dapp-kit";
+import { ConnectButton, useCurrentAccount } from "@mysten/dapp-kit";
 import { Link } from "react-router-dom";
+import { usePulseBalance, usePulseCoinBalance } from "../hooks/usePulseBalance";
 
 interface HeaderProps {
   epoch?: number;
+}
+
+function PulseBadge() {
+  const account = useCurrentAccount();
+  const { balance: poolBalance } = usePulseBalance();
+  const { coinBalance } = usePulseCoinBalance();
+
+  if (!account) return null;
+
+  const total = (poolBalance ?? 0) + (coinBalance ?? 0);
+  if (total === 0 && poolBalance === null && coinBalance === null) return null;
+
+  return (
+    <span
+      style={{
+        fontFamily: "var(--mw-font-mono)",
+        fontSize: 12,
+        color: "#d4a026",
+        background: "rgba(212, 160, 38, 0.1)",
+        padding: "3px 12px",
+        borderRadius: "var(--mw-r-full)",
+        display: "flex",
+        alignItems: "center",
+        gap: 4,
+      }}
+    >
+      {total} PULSE
+    </span>
+  );
 }
 
 export function Header({ epoch }: HeaderProps) {
@@ -63,6 +93,7 @@ export function Header({ epoch }: HeaderProps) {
             Epoch {epoch}
           </span>
         )}
+        <PulseBadge />
       </div>
       <ConnectButton />
     </header>

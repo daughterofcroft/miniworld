@@ -11,6 +11,7 @@ import { Timeline } from "../components/Timeline";
 import { Header } from "../components/Header";
 import { AgentPanel } from "../components/AgentPanel";
 import { DeployAgent } from "../components/DeployAgent";
+import { ClaimPulse } from "../components/ClaimPulse";
 
 function Stat({
   value,
@@ -287,6 +288,9 @@ function WorldViewInner({ worldId }: { worldId: string }) {
                 Viewing epoch {timelineEpoch}
               </div>
             )}
+
+            {/* Claim PULSE */}
+            <ClaimPulse />
 
             {/* Agent section */}
             {hasAgent && agentId && (
