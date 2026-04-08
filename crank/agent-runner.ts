@@ -19,6 +19,13 @@ if (!PACKAGE_ID || !WORLD_ID || !AGENT_ID || !AGENT_CAP_ID || !AGENT_SECRET) {
 
 const PULSE_INTERVAL_MS = Math.max(5_000, Number(process.env.PULSE_INTERVAL_MS || 60_000) || 60_000);
 
+const WALRUS_PUBLISHER_URL =
+  process.env.WALRUS_PUBLISHER_URL ||
+  "https://publisher.walrus-testnet.walrus.space";
+const WALRUS_AGGREGATOR_URL =
+  process.env.WALRUS_AGGREGATOR_URL ||
+  "https://aggregator.walrus-testnet.walrus.space";
+
 // Sui keystore format: 1-byte scheme flag + 32-byte secret key
 const keyBytes = Buffer.from(AGENT_SECRET, "base64");
 const keypair = Ed25519Keypair.fromSecretKey(
@@ -26,10 +33,62 @@ const keypair = Ed25519Keypair.fromSecretKey(
 );
 const client = new SuiClient({ url: getFullnodeUrl("testnet") });
 
+// ── Walrus helpers ──
+
+async function storeBlob(data: Uint8Array): Promise<string> {
+  const response = await fetch(`${WALRUS_PUBLISHER_URL}/v1/blobs`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/octet-stream" },
+    body: data,
+  });
+  if (!response.ok) {
+    throw new Error(`Walrus store failed: ${response.status} ${response.statusText}`);
+  }
+  const result = await response.json();
+  if (result.newlyCreated) {
+    return result.newlyCreated.blobObject.blobId;
+  }
+  if (result.alreadyCertified) {
+    return result.alreadyCertified.blobId;
+  }
+  throw new Error(`Unexpected Walrus response: ${JSON.stringify(result)}`);
+}
+
+async function readBlob(blobId: string): Promise<Uint8Array> {
+  const response = await fetch(
+    `${WALRUS_AGGREGATOR_URL}/v1/blobs/${blobId}`,
+  );
+  if (!response.ok) {
+    throw new Error(`Walrus read failed: ${response.status}`);
+  }
+  return new Uint8Array(await response.arrayBuffer());
+}
+
+// ── Observation types ──
+
+interface AgentObservation {
+  epoch: number;
+  timestamp: number;
+  atRiskCount: number;
+  savedTile: { x: number; y: number } | null;
+  reason: string;
+  aliveCount: number;
+}
+
+interface ObservationManifestEntry {
+  epoch: number;
+  blobId: string;
+  timestamp: number;
+}
+
 // ── State ──
 
 let defending = false; // mutex to prevent stacking
 let lastDefendedEpoch: number | null = null;
+
+let observationManifest: ObservationManifestEntry[] = [];
+let observationManifestBlobId: string | null =
+  process.env.WALRUS_AGENT_MANIFEST_BLOB_ID || null;
 
 // ── World state reading ──
 
@@ -170,6 +229,58 @@ async function executeDefend(x: number, y: number): Promise<string> {
   return result.digest;
 }
 
+// ── Observation logging (best-effort) ──
+
+async function logObservation(obs: AgentObservation): Promise<void> {
+  try {
+    const data = new TextEncoder().encode(JSON.stringify(obs));
+    const blobId = await storeBlob(data);
+
+    observationManifest.push({
+      epoch: obs.epoch,
+      blobId,
+      timestamp: obs.timestamp,
+    });
+
+    console.log(`  Observation stored: epoch=${obs.epoch} blobId=${blobId}`);
+
+    // Publish manifest every 10 observations
+    if (observationManifest.length % 10 === 0) {
+      await publishObservationManifest();
+    }
+  } catch (err) {
+    console.error("  Observation logging failed (non-fatal):", err);
+  }
+}
+
+async function publishObservationManifest(): Promise<void> {
+  try {
+    const data = new TextEncoder().encode(JSON.stringify(observationManifest));
+    observationManifestBlobId = await storeBlob(data);
+    console.log(
+      `  Agent manifest published: blobId=${observationManifestBlobId} (${observationManifest.length} entries)`,
+    );
+    console.log(
+      `  *** Set this in localStorage: miniworld_agent_manifest_<worldId> = ${observationManifestBlobId} ***`,
+    );
+  } catch (err) {
+    console.error("  Agent manifest publish failed:", err);
+  }
+}
+
+async function recoverObservationManifest(): Promise<void> {
+  if (!observationManifestBlobId) return;
+  try {
+    const data = await readBlob(observationManifestBlobId);
+    const text = new TextDecoder().decode(data);
+    observationManifest = JSON.parse(text);
+    console.log(`Recovered agent manifest: ${observationManifest.length} entries`);
+  } catch (err) {
+    console.log("No existing agent manifest to recover, starting fresh");
+    observationManifest = [];
+  }
+}
+
 // ── Main loop ──
 
 async function tick() {
@@ -188,10 +299,22 @@ async function tick() {
       return;
     }
 
+    const aliveCount = state.grid.filter((c) => c !== null).length;
     const atRisk = findAtRiskTiles(state);
+
     if (atRisk.length === 0) {
       console.log(`Epoch ${state.epoch}: no tiles at risk`);
       lastDefendedEpoch = state.epoch;
+
+      // Log observation (best-effort)
+      await logObservation({
+        epoch: state.epoch,
+        timestamp: Date.now(),
+        atRiskCount: 0,
+        savedTile: null,
+        reason: "no tiles at risk",
+        aliveCount,
+      });
       return;
     }
 
@@ -201,6 +324,8 @@ async function tick() {
       `Epoch ${state.epoch}: ${atRisk.length} tiles at risk. Defending (${target.x}, ${target.y}) [type=${target.tileType}, neighbors=${target.neighbors}]`,
     );
 
+    let reason = `defended (${target.x},${target.y})`;
+
     try {
       const digest = await executeDefend(target.x, target.y);
       lastDefendedEpoch = state.epoch;
@@ -208,17 +333,34 @@ async function tick() {
     } catch (err: any) {
       // Handle known abort codes from agent_actions.move
       if (err.message?.includes("MoveAbort")) {
-        if (err.message.includes("4"))
+        if (err.message.includes("4")) {
           console.log("  Rate limited (already defended this epoch)");
-        else if (err.message.includes("5"))
+          reason = "rate limited";
+        } else if (err.message.includes("5")) {
           console.log("  Tile not at risk (state changed)");
-        else if (err.message.includes("8"))
+          reason = "tile no longer at risk";
+        } else if (err.message.includes("8")) {
           console.log("  Tile is dead (pulse happened first)");
-        else console.error("  Defense aborted:", err.message);
+          reason = "tile died before defense";
+        } else {
+          console.error("  Defense aborted:", err.message);
+          reason = `aborted: ${err.message}`;
+        }
       } else {
         console.error("  Defense failed:", err);
+        reason = "defense tx failed";
       }
     }
+
+    // Log observation (best-effort)
+    await logObservation({
+      epoch: state.epoch,
+      timestamp: Date.now(),
+      atRiskCount: atRisk.length,
+      savedTile: reason.startsWith("defended") ? { x: target.x, y: target.y } : null,
+      reason,
+      aliveCount,
+    });
   } catch (err) {
     console.error("Tick failed:", err);
   } finally {
@@ -236,7 +378,15 @@ async function main() {
   console.log(`AgentCap: ${AGENT_CAP_ID}`);
   console.log(`Interval: ${PULSE_INTERVAL_MS}ms`);
   console.log(`Agent address: ${keypair.toSuiAddress()}`);
+  console.log(`Walrus publisher: ${WALRUS_PUBLISHER_URL}`);
+  console.log(`Walrus aggregator: ${WALRUS_AGGREGATOR_URL}`);
+  if (observationManifestBlobId) {
+    console.log(`Agent manifest: ${observationManifestBlobId}`);
+  }
   console.log("");
+
+  // Attempt manifest recovery
+  await recoverObservationManifest();
 
   // Read initial world state
   try {

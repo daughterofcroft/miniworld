@@ -1,4 +1,5 @@
 import { useAgentState, useAgentBalance } from "../hooks/useAgentState";
+import { useAgentMemory } from "../hooks/useAgentMemory";
 
 const STRATEGY_LABELS: Record<number, string> = {
   0: "Guardian",
@@ -18,6 +19,16 @@ export function AgentPanel({ agentId, worldId }: AgentPanelProps) {
       ? localStorage.getItem(`miniworld_agent_address_${worldId}`)
       : null;
   const { data: balance } = useAgentBalance(agentAddress);
+
+  // Read agent observation manifest from localStorage
+  const manifestBlobId =
+    typeof window !== "undefined"
+      ? localStorage.getItem(`miniworld_agent_manifest_${worldId}`)
+      : null;
+  const {
+    observations,
+    isLoading: memoryLoading,
+  } = useAgentMemory(manifestBlobId);
 
   if (isLoading) {
     return (
@@ -83,6 +94,9 @@ export function AgentPanel({ agentId, worldId }: AgentPanelProps) {
         <Row label="Last Action" value={agent.lastActionEpoch > 0 ? `Epoch ${agent.lastActionEpoch}` : "None yet"} />
       </div>
 
+      {/* Recent Activity Feed */}
+      <ActivityFeed observations={observations} isLoading={memoryLoading} />
+
       {showLowGas && (
         <div
           style={{
@@ -123,6 +137,86 @@ export function AgentPanel({ agentId, worldId }: AgentPanelProps) {
       >
         ID: {agentId.slice(0, 10)}...{agentId.slice(-6)}
       </div>
+    </div>
+  );
+}
+
+function ActivityFeed({
+  observations,
+  isLoading,
+}: {
+  observations: { epoch: number; blobId: string; timestamp: number }[];
+  isLoading: boolean;
+}) {
+  // Show last 10 entries, newest first
+  const recent = observations.slice(-10).reverse();
+
+  return (
+    <div
+      style={{
+        marginTop: 12,
+        borderTop: "1px solid var(--mw-border)",
+        paddingTop: 10,
+      }}
+    >
+      <div
+        style={{
+          fontFamily: "var(--mw-font-body)",
+          fontSize: 11,
+          fontWeight: 500,
+          color: "var(--mw-muted)",
+          textTransform: "uppercase",
+          letterSpacing: "0.08em",
+          marginBottom: 6,
+        }}
+      >
+        Recent Activity
+      </div>
+
+      {isLoading ? (
+        <div
+          style={{
+            fontFamily: "var(--mw-font-body)",
+            fontSize: 12,
+            color: "var(--mw-muted)",
+          }}
+        >
+          Loading activity...
+        </div>
+      ) : recent.length === 0 ? (
+        <div
+          style={{
+            fontFamily: "var(--mw-font-body)",
+            fontSize: 12,
+            color: "var(--mw-muted)",
+            fontStyle: "italic",
+          }}
+        >
+          No activity recorded yet
+        </div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+          {recent.map((entry) => (
+            <div
+              key={entry.epoch}
+              style={{
+                fontFamily: "var(--mw-font-mono)",
+                fontSize: 11,
+                color: "var(--mw-text)",
+                display: "flex",
+                gap: 6,
+              }}
+            >
+              <span style={{ color: "var(--mw-muted)", minWidth: 60 }}>
+                Epoch {entry.epoch}
+              </span>
+              <span style={{ color: "var(--mw-muted)", fontSize: 10 }}>
+                {new Date(entry.timestamp).toLocaleTimeString()}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
