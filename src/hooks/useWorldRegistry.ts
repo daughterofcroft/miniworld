@@ -21,39 +21,56 @@ export function useWorldRegistry() {
       setIsLoading(true);
       setError(null);
 
-      // Paginate through all dynamic fields on the registry
-      const worldIds: string[] = [];
+      // Step 1: Read the WorldRegistry to get the Table's ID
+      const registryObj = await client.getObject({
+        id: registryId,
+        options: { showContent: true },
+      });
+
+      if (!registryObj.data?.content || registryObj.data.content.dataType !== "moveObject") {
+        setWorlds([]);
+        setIsLoading(false);
+        return;
+      }
+
+      const registryFields = registryObj.data.content.fields as Record<string, any>;
+      const tableId = registryFields.worlds?.fields?.id?.id;
+      const count = Number(registryFields.count ?? 0);
+
+      if (!tableId || count === 0) {
+        setWorlds([]);
+        setIsLoading(false);
+        return;
+      }
+
+      // Step 2: Paginate through the Table's dynamic fields
+      const fieldObjectIds: string[] = [];
       let cursor: string | null | undefined = undefined;
       let hasNext = true;
 
       while (hasNext) {
         const page = await client.getDynamicFields({
-          parentId: registryId,
+          parentId: tableId,
           ...(cursor ? { cursor } : {}),
         });
 
         for (const field of page.data) {
-          // Each dynamic field's objectId points to a dynamic field object;
-          // the value inside is the world ID string.
-          // The field name contains the world ID as well.
-          if (field.objectType && field.objectId) {
-            worldIds.push(field.objectId);
-          }
+          fieldObjectIds.push(field.objectId);
         }
 
         hasNext = page.hasNextPage;
         cursor = page.nextCursor;
       }
 
-      if (worldIds.length === 0) {
+      if (fieldObjectIds.length === 0) {
         setWorlds([]);
         setIsLoading(false);
         return;
       }
 
-      // Fetch the dynamic field objects to get the actual world IDs
+      // Step 3: Fetch the dynamic field objects to extract world IDs
       const fieldObjects = await client.multiGetObjects({
-        ids: worldIds,
+        ids: fieldObjectIds,
         options: { showContent: true },
       });
 
@@ -61,17 +78,10 @@ export function useWorldRegistry() {
       for (const obj of fieldObjects) {
         if (obj.data?.content?.dataType === "moveObject") {
           const fields = obj.data.content.fields as Record<string, any>;
-          // Dynamic fields have a "value" field containing the stored value
-          // and a "name" field containing the key
+          // Table<u64, ID> stores: { name: u64, value: ID (string) }
           const value = fields.value;
           if (typeof value === "string") {
             actualWorldIds.push(value);
-          } else if (value && typeof value === "object" && value.fields) {
-            // If value is a struct, try to extract ID
-            actualWorldIds.push(fields.name as string);
-          } else {
-            // The name itself might be the world ID for set-type fields
-            actualWorldIds.push(fields.name as string);
           }
         }
       }
