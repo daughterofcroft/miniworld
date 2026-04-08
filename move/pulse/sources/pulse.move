@@ -165,6 +165,12 @@ module pulse::pulse {
         cap.world_id
     }
 
+    /// Transfer a HarvestCap to a recipient. Required because HarvestCap
+    /// has `key` but not `store`, so only this module can transfer it.
+    public fun transfer_harvest_cap(cap: HarvestCap, recipient: address) {
+        transfer::transfer(cap, recipient);
+    }
+
     // ── Test helpers ──
 
     #[test_only]

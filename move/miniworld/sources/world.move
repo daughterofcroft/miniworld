@@ -444,4 +444,14 @@ module miniworld::world {
     fun coord_to_index(x: u8, y: u8, width: u8): u64 {
         (y as u64) * (width as u64) + (x as u64)
     }
+
+    // ── Test helpers ──
+
+    /// Place a tile with arbitrary type and owner. For tests only.
+    #[test_only]
+    public fun test_place_tile(world: &mut World, x: u8, y: u8, tile_type: u8, owner: address) {
+        let idx = coord_to_index(x, y, world.width);
+        let cell = vector::borrow_mut(&mut world.grid, idx);
+        *cell = option::some(Tile { tile_type, owner });
+    }
 }
