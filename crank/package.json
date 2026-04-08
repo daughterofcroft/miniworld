@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "crank": "tsx pulse-crank.ts",
+    "agent": "tsx agent-runner.ts",
     "seed": "tsx seed-world.ts"
   },
   "dependencies": {
