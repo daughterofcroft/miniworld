@@ -319,6 +319,13 @@ module miniworld::world {
         *df::borrow<AgentDeployed, ID>(&world.id, AgentDeployed {})
     }
 
+    /// Clear the AgentDeployed dynamic field on a world. Package-private.
+    public(package) fun clear_agent_deployed(world: &mut World) {
+        if (df::exists_<AgentDeployed>(&world.id, AgentDeployed {})) {
+            df::remove<AgentDeployed, ID>(&mut world.id, AgentDeployed {});
+        };
+    }
+
     // ── Public accessors ──
 
     public fun tile_owner(tile: &Tile): address { tile.owner }
