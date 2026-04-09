@@ -12,6 +12,11 @@ module miniworld::world_registry {
         count: u64,
     }
 
+    /// Capability for guarded world registration.
+    public struct RegistryCap has key, store {
+        id: UID,
+    }
+
     // ── Events ──
 
     public struct WorldRegistryCreated has copy, drop {
@@ -47,6 +52,25 @@ module miniworld::world_registry {
         registry.count = idx + 1;
     }
 
+    /// Create a RegistryCap. UpgradeCap-gated (one-time setup).
+    public fun create_registry_cap(
+        _cap: &UpgradeCap,
+        ctx: &mut TxContext,
+    ): RegistryCap {
+        RegistryCap { id: object::new(ctx) }
+    }
+
+    /// Register a world with RegistryCap authorization.
+    public fun register_world_v2(
+        registry: &mut WorldRegistry,
+        _cap: &RegistryCap,
+        world_id: ID,
+    ) {
+        let idx = registry.count;
+        table::add(&mut registry.worlds, idx, world_id);
+        registry.count = idx + 1;
+    }
+
     // ── Public accessors ──
 
     public fun world_count(registry: &WorldRegistry): u64 { registry.count }
@@ -65,5 +89,10 @@ module miniworld::world_registry {
             count: 0,
         };
         transfer::share_object(registry);
+    }
+
+    #[test_only]
+    public fun test_create_registry_cap(ctx: &mut TxContext): RegistryCap {
+        RegistryCap { id: object::new(ctx) }
     }
 }

@@ -11,6 +11,9 @@ import { Timeline } from "../components/Timeline";
 import { Header } from "../components/Header";
 import { AgentPanel } from "../components/AgentPanel";
 import { DeployAgent } from "../components/DeployAgent";
+import { ClaimPulse } from "../components/ClaimPulse";
+import { RaidButton } from "../components/RaidButton";
+import { RaidLog } from "../components/RaidLog";
 
 function Stat({
   value,
@@ -145,14 +148,39 @@ function WorldViewInner({ worldId }: { worldId: string }) {
     !!currentAccount && !!worldOwner && currentAccount.address === worldOwner;
   const canDeploy = isOwner && !hasAgent;
 
-  const [selectedCell, setSelectedCell] = useState<{
-    x: number;
-    y: number;
-  } | null>(null);
+  const MAX_PLACEMENTS = 5;
+  const [selectedCells, setSelectedCells] = useState<{ x: number; y: number }[]>([]);
   const [timelineEpoch, setTimelineEpoch] = useState<number | null>(null);
   const [historicalGrid, setHistoricalGrid] = useState<
     (TileData | null)[] | null
   >(null);
+  const [awayBanner, setAwayBanner] = useState<{ epochs: number; aliveDelta: number } | null>(null);
+
+  // Store this world as "last own world" if user is the owner (for raid source)
+  useEffect(() => {
+    if (isOwner && worldId) {
+      localStorage.setItem("miniworld_last_own_world", worldId);
+    }
+  }, [isOwner, worldId]);
+
+  // "While you were away" banner
+  useEffect(() => {
+    if (!worldState) return;
+    const key = `last_seen_epoch_${worldId}`;
+    const lastSeen = Number(localStorage.getItem(key) ?? 0);
+    const currentEpoch = worldState.epoch;
+
+    if (lastSeen > 0 && currentEpoch - lastSeen > 1) {
+      // Calculate alive delta from stored count
+      const aliveKey = `last_seen_alive_${worldId}`;
+      const lastAlive = Number(localStorage.getItem(aliveKey) ?? 0);
+      const aliveDelta = worldState.aliveCount - lastAlive;
+      setAwayBanner({ epochs: currentEpoch - lastSeen, aliveDelta });
+    }
+
+    localStorage.setItem(key, String(currentEpoch));
+    localStorage.setItem(`last_seen_alive_${worldId}`, String(worldState.aliveCount));
+  }, [worldState?.epoch, worldId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const interval = setInterval(() => refetch(), 10_000);
@@ -175,8 +203,23 @@ function WorldViewInner({ worldId }: { worldId: string }) {
     });
   }, [timelineEpoch, loadSnapshot]);
 
+  const handleCellClick = useCallback(
+    (x: number, y: number) => {
+      setSelectedCells((prev) => {
+        const exists = prev.findIndex((c) => c.x === x && c.y === y);
+        if (exists >= 0) {
+          // Toggle off
+          return [...prev.slice(0, exists), ...prev.slice(exists + 1)];
+        }
+        if (prev.length >= MAX_PLACEMENTS) return prev;
+        return [...prev, { x, y }];
+      });
+    },
+    [],
+  );
+
   const handlePlaced = useCallback(() => {
-    setSelectedCell(null);
+    setSelectedCells([]);
     setTimeout(() => refetch(), 2000);
   }, [refetch]);
 
@@ -221,6 +264,48 @@ function WorldViewInner({ worldId }: { worldId: string }) {
           {worldId.slice(0, 8)}...{worldId.slice(-6)}
         </div>
 
+        {/* While you were away banner */}
+        {awayBanner && (
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 400,
+              padding: "10px 16px",
+              background: "rgba(212, 160, 38, 0.08)",
+              border: "1px solid rgba(212, 160, 38, 0.25)",
+              borderRadius: "var(--mw-r-md)",
+              fontFamily: "var(--mw-font-body)",
+              fontSize: 13,
+              color: "#d4a026",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <span>
+              While you were away ({awayBanner.epochs} pulses):{" "}
+              <strong>
+                {awayBanner.aliveDelta > 0 ? "+" : ""}
+                {awayBanner.aliveDelta} tiles changed
+              </strong>
+            </span>
+            <button
+              onClick={() => setAwayBanner(null)}
+              style={{
+                background: "transparent",
+                border: "none",
+                color: "#d4a026",
+                cursor: "pointer",
+                fontSize: 16,
+                lineHeight: 1,
+                padding: "0 4px",
+              }}
+            >
+              x
+            </button>
+          </div>
+        )}
+
         {isLoading ? (
           <div style={{ padding: "80px 0", color: "var(--mw-muted)" }}>
             Loading world...
@@ -248,9 +333,9 @@ function WorldViewInner({ worldId }: { worldId: string }) {
               width={displayWidth}
               height={displayHeight}
               onCellClick={(x, y) =>
-                !isViewingHistory && setSelectedCell({ x, y })
+                !isViewingHistory && handleCellClick(x, y)
               }
-              selectedCell={isViewingHistory ? null : selectedCell}
+              selectedCells={isViewingHistory ? [] : selectedCells}
               disabled={isViewingHistory}
             />
 
@@ -258,7 +343,7 @@ function WorldViewInner({ worldId }: { worldId: string }) {
             {!isViewingHistory && (
               <TilePlacer
                 worldId={worldId}
-                selectedCell={selectedCell}
+                selectedCells={selectedCells}
                 onPlaced={handlePlaced}
               />
             )}
@@ -274,6 +359,22 @@ function WorldViewInner({ worldId }: { worldId: string }) {
                 Viewing epoch {timelineEpoch}
               </div>
             )}
+
+            {/* Claim PULSE */}
+            <ClaimPulse />
+
+            {/* Raid (only when viewing someone else's world) */}
+            {!isOwner && currentAccount && (
+              <RaidButton
+                targetWorldId={worldId}
+                onRaidSuccess={() => {
+                  setTimeout(() => refetch(), 2000);
+                }}
+              />
+            )}
+
+            {/* Raid log */}
+            <RaidLog worldId={worldId} />
 
             {/* Agent section */}
             {hasAgent && agentId && (

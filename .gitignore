@@ -9,4 +9,6 @@ move/miniworld/build/
 .DS_Store
 crank/node_modules/
 crank/.env
+crank/worlds.json
+crank/agents.json
 .gstack/

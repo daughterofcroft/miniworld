@@ -2,16 +2,19 @@ module miniworld::world {
     use sui::vec_map::{Self, VecMap};
     use sui::dynamic_field as df;
     use miniworld::events;
-    use miniworld::world_registry::{Self, WorldRegistry};
+    use miniworld::world_registry::{Self, WorldRegistry, RegistryCap};
+    use pulse::pulse::{Self, PulsePool};
 
     // ── Error codes ──
     const EInvalidCoordinate: u64 = 0;
     const ERateLimited: u64 = 1;
     const ENotPulseOperator: u64 = 2;
     const EAlreadyOwned: u64 = 3;
+    const ERateLimitedV2: u64 = 10;
 
     // ── Constants ──
     const GRID_SIZE: u8 = 32;
+    const MAX_PLACEMENTS_V2: u8 = 5;
 
     // ── Structs ──
 
@@ -20,6 +23,17 @@ module miniworld::world {
 
     /// Dynamic field key marking a world as having an agent. Value is the Agent's ID.
     public struct AgentDeployed has copy, drop, store {}
+
+    /// Dynamic field key for tracking placements per address per epoch.
+    public struct PlacementTracker has copy, drop, store {
+        addr: address,
+    }
+
+    /// Value stored in the PlacementTracker dynamic field.
+    public struct PlacementData has store, drop {
+        epoch: u64,
+        count: u8,
+    }
 
     /// A tile on the grid. Alive cells have Some(Tile), dead cells have None.
     public struct Tile has store, drop, copy {
@@ -108,6 +122,48 @@ module miniworld::world {
         events::emit_tile_placed(x, y, tile_type, sender, world.epoch, previous_owner);
     }
 
+    /// Place a tile with a 5-per-epoch rate limit. Uses dynamic fields instead of VecMap.
+    public fun place_tile_v2(
+        world: &mut World,
+        x: u8,
+        y: u8,
+        tile_type: u8,
+        ctx: &mut TxContext,
+    ) {
+        assert!(x < world.width && y < world.height, EInvalidCoordinate);
+
+        let sender = ctx.sender();
+        let tracker_key = PlacementTracker { addr: sender };
+
+        // Check/update rate limit via dynamic field
+        if (df::exists_(&world.id, tracker_key)) {
+            let data = df::borrow_mut<PlacementTracker, PlacementData>(&mut world.id, tracker_key);
+            if (data.epoch == world.epoch) {
+                assert!(data.count < MAX_PLACEMENTS_V2, ERateLimitedV2);
+                data.count = data.count + 1;
+            } else {
+                // New epoch, reset counter
+                data.epoch = world.epoch;
+                data.count = 1;
+            };
+        } else {
+            df::add(&mut world.id, tracker_key, PlacementData { epoch: world.epoch, count: 1 });
+        };
+
+        let idx = coord_to_index(x, y, world.width);
+        let cell = vector::borrow_mut(&mut world.grid, idx);
+        let previous_owner = if (option::is_some(cell)) {
+            let old_tile = option::borrow(cell);
+            option::some(old_tile.owner)
+        } else {
+            option::none()
+        };
+
+        *cell = option::some(Tile { tile_type, owner: sender });
+
+        events::emit_tile_placed(x, y, tile_type, sender, world.epoch, previous_owner);
+    }
+
     /// Execute a world pulse. Requires PulseCap.
     /// Runs the Game of Life rule, then increments the epoch.
     public fun pulse(
@@ -174,6 +230,57 @@ module miniworld::world {
         transfer::transfer(cap, ctx.sender());
     }
 
+    /// Create a new world with PULSE bootstrap and HarvestCap.
+    /// Stage 3 replacement for create_world_v2.
+    public fun create_world_v3(
+        registry: &mut WorldRegistry,
+        registry_cap: &RegistryCap,
+        pool: &mut PulsePool,
+        ctx: &mut TxContext,
+    ) {
+        // Create the world (same as create_world_v2 internals)
+        let mut grid = vector[];
+        let total = (GRID_SIZE as u64) * (GRID_SIZE as u64);
+        let mut i: u64 = 0;
+        while (i < total) {
+            vector::push_back(&mut grid, option::none<Tile>());
+            i = i + 1;
+        };
+
+        let mut world = World {
+            id: object::new(ctx),
+            epoch: 0,
+            width: GRID_SIZE,
+            height: GRID_SIZE,
+            grid,
+            last_placement: vec_map::empty(),
+        };
+
+        // Set ownership
+        df::add(&mut world.id, WorldOwner {}, ctx.sender());
+
+        let world_id = object::id(&world);
+
+        // Register in WorldRegistry (guarded by RegistryCap)
+        world_registry::register_world_v2(registry, registry_cap, world_id);
+
+        // Create PulseCap
+        let cap = PulseCap {
+            id: object::new(ctx),
+            world_id,
+        };
+
+        // Create HarvestCap for this world
+        let harvest_cap = pulse::create_harvest_cap(world_id, ctx);
+
+        // Bootstrap: credit 100 PULSE to creator
+        pulse::credit_pool(pool, ctx.sender(), 100);
+
+        transfer::share_object(world);
+        transfer::transfer(cap, ctx.sender());
+        pulse::transfer_harvest_cap(harvest_cap, ctx.sender());
+    }
+
     /// Claim ownership of a world that has no owner set (for Stage 1 worlds).
     /// First-come-first-served. Only succeeds if no WorldOwner dynamic field exists.
     public fun claim_world_owner(
@@ -210,6 +317,13 @@ module miniworld::world {
     /// Get the deployed agent's ID for this world.
     public fun agent_id(world: &World): ID {
         *df::borrow<AgentDeployed, ID>(&world.id, AgentDeployed {})
+    }
+
+    /// Clear the AgentDeployed dynamic field on a world. Package-private.
+    public(package) fun clear_agent_deployed(world: &mut World) {
+        if (df::exists_<AgentDeployed>(&world.id, AgentDeployed {})) {
+            df::remove<AgentDeployed, ID>(&mut world.id, AgentDeployed {});
+        };
     }
 
     // ── Public accessors ──
@@ -331,9 +445,72 @@ module miniworld::world {
         count
     }
 
+    // ── Raid helpers (public(package)) ──
+
+    /// Dynamic field key for raid rate limiting on target worlds.
+    public struct RaidTracker has copy, drop, store {
+        raider: address,
+    }
+
+    /// Value stored in the RaidTracker dynamic field.
+    public struct RaidData has store, drop {
+        epoch: u64,
+    }
+
+    /// Place a raid tile (tile_type=2) at (x, y). Only callable from within the miniworld package.
+    public(package) fun place_raid_tile(
+        world: &mut World,
+        x: u8,
+        y: u8,
+        raider: address,
+    ) {
+        let idx = coord_to_index(x, y, world.width);
+        let cell = vector::borrow_mut(&mut world.grid, idx);
+        *cell = option::some(Tile { tile_type: 2, owner: raider });
+    }
+
+    /// Check if an address has already raided this world this epoch.
+    /// Returns true if rate limited (already raided this epoch).
+    public(package) fun check_raid_rate_limit(
+        world: &World,
+        raider: address,
+    ): bool {
+        let key = RaidTracker { raider };
+        if (df::exists_<RaidTracker>(&world.id, key)) {
+            let data = df::borrow<RaidTracker, RaidData>(&world.id, key);
+            data.epoch == world.epoch
+        } else {
+            false
+        }
+    }
+
+    /// Record a raid for rate limiting on the target world.
+    public(package) fun record_raid(
+        world: &mut World,
+        raider: address,
+    ) {
+        let key = RaidTracker { raider };
+        if (df::exists_<RaidTracker>(&world.id, key)) {
+            let data = df::borrow_mut<RaidTracker, RaidData>(&mut world.id, key);
+            data.epoch = world.epoch;
+        } else {
+            df::add(&mut world.id, key, RaidData { epoch: world.epoch });
+        };
+    }
+
     // ── Helpers ──
 
     fun coord_to_index(x: u8, y: u8, width: u8): u64 {
         (y as u64) * (width as u64) + (x as u64)
+    }
+
+    // ── Test helpers ──
+
+    /// Place a tile with arbitrary type and owner. For tests only.
+    #[test_only]
+    public fun test_place_tile(world: &mut World, x: u8, y: u8, tile_type: u8, owner: address) {
+        let idx = coord_to_index(x, y, world.width);
+        let cell = vector::borrow_mut(&mut world.grid, idx);
+        *cell = option::some(Tile { tile_type, owner });
     }
 }

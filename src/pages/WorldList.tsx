@@ -5,7 +5,7 @@ import {
   useSuiClient,
 } from "@mysten/dapp-kit";
 import { Transaction } from "@mysten/sui/transactions";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useNetworkVariable } from "../networkConfig";
 import { useWorldRegistry } from "../hooks/useWorldRegistry";
 import { Header } from "../components/Header";
@@ -19,6 +19,12 @@ export function WorldList() {
   const { mutate: signAndExecute } = useSignAndExecuteTransaction();
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+
+  // Sort worlds by alive count descending for leaderboard
+  const sortedWorlds = useMemo(
+    () => [...worlds].sort((a, b) => b.aliveCount - a.aliveCount),
+    [worlds],
+  );
 
   const handleCreateWorld = () => {
     setCreating(true);
@@ -79,7 +85,7 @@ export function WorldList() {
               color: "var(--mw-text)",
             }}
           >
-            Worlds
+            Leaderboard
           </h1>
 
           {currentAccount ? (
@@ -170,108 +176,131 @@ export function WorldList() {
               gap: 12,
             }}
           >
-            {worlds.map((world) => (
-              <Link
-                key={world.worldId}
-                to={`/world/${world.worldId}`}
-                style={{ textDecoration: "none" }}
-              >
-                <div
-                  style={{
-                    background: "var(--mw-surface)",
-                    border: "1px solid var(--mw-border)",
-                    borderRadius: "var(--mw-r-lg)",
-                    padding: 16,
-                    transition: "border-color 0.15s, background 0.15s",
-                    cursor: "pointer",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.borderColor = "var(--mw-accent)";
-                    e.currentTarget.style.background = "var(--mw-surface-hover)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.borderColor = "var(--mw-border)";
-                    e.currentTarget.style.background = "var(--mw-surface)";
-                  }}
+            {sortedWorlds.map((world, index) => {
+              const rank = index + 1;
+              const rankLabel = rank === 1 ? "1st" : rank === 2 ? "2nd" : rank === 3 ? "3rd" : `#${rank}`;
+              const rankColor = rank === 1 ? "#d4a026" : rank === 2 ? "#a0a0a0" : rank === 3 ? "#cd7f32" : "var(--mw-muted)";
+
+              return (
+                <Link
+                  key={world.worldId}
+                  to={`/world/${world.worldId}`}
+                  style={{ textDecoration: "none" }}
                 >
-                  {/* World ID */}
                   <div
                     style={{
-                      fontFamily: "var(--mw-font-mono)",
-                      fontSize: 11,
-                      color: "var(--mw-muted)",
-                      marginBottom: 12,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
+                      background: "var(--mw-surface)",
+                      border: "1px solid var(--mw-border)",
+                      borderRadius: "var(--mw-r-lg)",
+                      padding: 16,
+                      transition: "border-color 0.15s, background 0.15s",
+                      cursor: "pointer",
+                      position: "relative",
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.borderColor = "var(--mw-accent)";
+                      e.currentTarget.style.background = "var(--mw-surface-hover)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.borderColor = "var(--mw-border)";
+                      e.currentTarget.style.background = "var(--mw-surface)";
                     }}
                   >
-                    {world.worldId.slice(0, 8)}...{world.worldId.slice(-6)}
-                  </div>
-
-                  {/* Stats row */}
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "baseline",
-                    }}
-                  >
-                    <div>
-                      <div
-                        style={{
-                          fontFamily: "var(--mw-font-mono)",
-                          fontSize: 16,
-                          fontVariantNumeric: "tabular-nums",
-                          color: "var(--mw-accent)",
-                          lineHeight: 1.2,
-                        }}
-                      >
-                        {world.aliveCount}
-                      </div>
-                      <div
-                        style={{
-                          fontSize: 10,
-                          fontWeight: 500,
-                          color: "var(--mw-muted)",
-                          textTransform: "uppercase" as const,
-                          letterSpacing: "0.08em",
-                          marginTop: 2,
-                        }}
-                      >
-                        Alive
-                      </div>
+                    {/* Rank badge */}
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 8,
+                        right: 10,
+                        fontFamily: "var(--mw-font-mono)",
+                        fontSize: rank <= 3 ? 13 : 11,
+                        fontWeight: rank <= 3 ? 700 : 400,
+                        color: rankColor,
+                      }}
+                    >
+                      {rankLabel}
                     </div>
 
-                    <div style={{ textAlign: "right" }}>
-                      <div
-                        style={{
-                          fontFamily: "var(--mw-font-mono)",
-                          fontSize: 16,
-                          fontVariantNumeric: "tabular-nums",
-                          color: "var(--mw-text)",
-                          lineHeight: 1.2,
-                        }}
-                      >
-                        {world.epoch}
+                    {/* World ID */}
+                    <div
+                      style={{
+                        fontFamily: "var(--mw-font-mono)",
+                        fontSize: 11,
+                        color: "var(--mw-muted)",
+                        marginBottom: 12,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        whiteSpace: "nowrap",
+                        paddingRight: 40,
+                      }}
+                    >
+                      {world.worldId.slice(0, 8)}...{world.worldId.slice(-6)}
+                    </div>
+
+                    {/* Stats row */}
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "baseline",
+                      }}
+                    >
+                      <div>
+                        <div
+                          style={{
+                            fontFamily: "var(--mw-font-mono)",
+                            fontSize: 16,
+                            fontVariantNumeric: "tabular-nums",
+                            color: "var(--mw-accent)",
+                            lineHeight: 1.2,
+                          }}
+                        >
+                          {world.aliveCount}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 500,
+                            color: "var(--mw-muted)",
+                            textTransform: "uppercase" as const,
+                            letterSpacing: "0.08em",
+                            marginTop: 2,
+                          }}
+                        >
+                          Alive
+                        </div>
                       </div>
-                      <div
-                        style={{
-                          fontSize: 10,
-                          fontWeight: 500,
-                          color: "var(--mw-muted)",
-                          textTransform: "uppercase" as const,
-                          letterSpacing: "0.08em",
-                          marginTop: 2,
-                        }}
-                      >
-                        Epoch
+
+                      <div style={{ textAlign: "right" }}>
+                        <div
+                          style={{
+                            fontFamily: "var(--mw-font-mono)",
+                            fontSize: 16,
+                            fontVariantNumeric: "tabular-nums",
+                            color: "var(--mw-text)",
+                            lineHeight: 1.2,
+                          }}
+                        >
+                          {world.epoch}
+                        </div>
+                        <div
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 500,
+                            color: "var(--mw-muted)",
+                            textTransform: "uppercase" as const,
+                            letterSpacing: "0.08em",
+                            marginTop: 2,
+                          }}
+                        >
+                          Epoch
+                        </div>
                       </div>
                     </div>
                   </div>
-                </div>
-              </Link>
-            ))}
+                </Link>
+              );
+            })}
           </div>
         )}
 

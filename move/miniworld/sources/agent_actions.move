@@ -10,6 +10,7 @@ module miniworld::agent_actions {
     const EWrongWorld: u64 = 7;
     const ETileDead: u64 = 8;
     const EInvalidCoordinate: u64 = 9;
+    const EAgentRevoked: u64 = 11;
 
     // ── Events ──
 
@@ -35,6 +36,9 @@ module miniworld::agent_actions {
         y: u8,
         _ctx: &mut TxContext,
     ) {
+        // Check agent is not revoked
+        assert!(!agent::is_revoked(agent), EAgentRevoked);
+
         // Validate cap matches agent
         assert!(agent::agent_cap_agent_id(cap) == object::id(agent), EInvalidAgentCap);
 

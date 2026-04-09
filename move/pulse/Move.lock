@@ -16,14 +16,8 @@ use_environment = "testnet"
 manifest_digest = "7AFB66695545775FBFBB2D3078ADFD084244D5002392E837FDE21D9EA1C6D01C"
 deps = { MoveStdlib = "MoveStdlib" }
 
-[pinned.testnet.miniworld]
-source = { root = true }
-use_environment = "testnet"
-manifest_digest = "7BD78C1CF671057001B59058FFDA4C0481B3DAAC540CC08CD600C4602B6679CC"
-deps = { Sui = "Sui", pulse = "pulse" }
-
 [pinned.testnet.pulse]
-source = { local = "../pulse" }
+source = { root = true }
 use_environment = "testnet"
 manifest_digest = "3A2D883E652393FB34C9A7B49F8006AC19F456B3CCD127B970575E962F59DEBD"
 deps = { Sui = "Sui" }

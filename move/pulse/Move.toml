@@ -1,11 +1,10 @@
 [package]
-name = "miniworld"
+name = "pulse"
 version = "0.0.1"
 edition = "2024.beta"
 
 [addresses]
-miniworld = "0x0"
+pulse = "0x0"
 
 [dependencies]
 Sui = { git = "https://github.com/MystenLabs/sui.git", subdir = "crates/sui-framework/packages/sui-framework", rev = "85400e2bd37b490fcd057776e700d3fdca643396" }
-pulse = { local = "../pulse" }
